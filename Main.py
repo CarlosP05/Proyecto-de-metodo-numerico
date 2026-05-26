@@ -7,6 +7,7 @@ Lógica matemática separada en módulos externos (biseccion.py, etc.)
 # ═══════════════════════════════════════════════
 #  IMPORTACIONES
 # ═══════════════════════════════════════════════
+import math
 import tkinter as tk
 from tkinter import ttk
 import customtkinter as ctk
@@ -25,6 +26,17 @@ from punto_fijo  import MetodoPuntoFijo
 from muller import MetodoMuller
 from bairstow import MetodoBairstow
 from horner_newton import MetodoHornerNewton
+from metodos_avanzados import (
+    MetodoGaussJordan,
+    MetodoInterpolacionLagrange,
+    MetodoJacobi,
+    MetodoLU,
+    MetodoMinimosCuadrados,
+    MetodoNewtonDiferenciasDivididas,
+    MetodoNewtonSENL,
+    MetodoRegresionCuadratica,
+    MetodoRoucheFrobenius,
+)
 
 # Sistema de temas
 from ui_theme import get_theme, apply_treeview_style
@@ -92,7 +104,7 @@ class AplicacionPrincipal(ctk.CTk):
         )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
-        self.sidebar.grid_rowconfigure(13, weight=1)   # Empuja el selector de tema hacia abajo
+        self.sidebar.grid_rowconfigure(15, weight=1)   # Empuja el selector de tema hacia abajo
 
         # ── Logo / Título
         logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -156,13 +168,16 @@ class AplicacionPrincipal(ctk.CTk):
         self.btn_horner = self._nav_button(
             self.sidebar, "  📝  Horner-Newton", self.mostrar_horner, row=12
         )
+        self.btn_avanzados = self._nav_button(
+            self.sidebar, "  🧩  Métodos avanzados", self.mostrar_avanzados, row=13
+        )
 
         # Separador inferior
-        self._sep(self.sidebar, row=12)
+        self._sep(self.sidebar, row=14)
 
         # ── Toggle de tema
         tema_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        tema_frame.grid(row=14, column=0, padx=16, pady=(0, 20), sticky="ew")
+        tema_frame.grid(row=16, column=0, padx=16, pady=(0, 20), sticky="ew")
 
         ctk.CTkLabel(
             tema_frame, text="Tema:",
@@ -390,6 +405,27 @@ class AplicacionPrincipal(ctk.CTk):
         e.grid(row=row, column=col, padx=(4, 16), pady=8, sticky="w")
         return e
 
+    def _textbox(self, row: int, col: int, texto: str = "", width: int = 260,
+                 height: int = 90, colspan: int = 1):
+        bg = "#1a1a1a" if self._modo_oscuro else "#ffffff"
+        border = "#2a2a2a" if self._modo_oscuro else "#d1d5db"
+        fg = "#f0f0f0" if self._modo_oscuro else "#111827"
+        box = ctk.CTkTextbox(
+            self.frame_principal,
+            width=width,
+            height=height,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=bg,
+            border_color=border,
+            text_color=fg,
+            corner_radius=8,
+            border_width=1,
+        )
+        if texto:
+            box.insert("1.0", texto)
+        box.grid(row=row, column=col, columnspan=colspan, padx=(4, 16), pady=8, sticky="nsew")
+        return box
+
     def _boton_calcular(self, texto: str, comando, row: int, col: int = 0, colspan: int = 4):
         """Botón 'Calcular Raíz' con efecto glow en modo oscuro."""
         btn = ctk.CTkButton(
@@ -456,6 +492,53 @@ class AplicacionPrincipal(ctk.CTk):
         tabs.add("📈  Gráfica")
         return tabs
 
+    def _crear_tabs_resultado(self, row: int):
+        tabs = ctk.CTkTabview(
+            self.frame_principal,
+            fg_color="#1e1e1e" if self._modo_oscuro else "#f3f4f6",
+            segmented_button_fg_color="#181818" if self._modo_oscuro else "#e5e7eb",
+            segmented_button_selected_color=self._t("accent"),
+            segmented_button_selected_hover_color=self._t("accent_hover"),
+            segmented_button_unselected_color="#181818" if self._modo_oscuro else "#e5e7eb",
+            segmented_button_unselected_hover_color="#252525" if self._modo_oscuro else "#d1d5db",
+            text_color="#f0f0f0" if self._modo_oscuro else "#111827",
+            corner_radius=10,
+        )
+        tabs.grid(row=row, column=0, columnspan=4, padx=16, pady=(0, 16), sticky="nsew")
+        tabs.add("📋  Resultado")
+        tabs.add("📊  Detalle")
+        self._mostrar_texto_resultado(
+            tabs.tab("📊  Detalle"),
+            "Aquí aparecerá el detalle del cálculo cuando presiones el botón calcular."
+        )
+        return tabs
+
+    def _mostrar_resultado_avanzado(self, tabs, resumen: str, detalle: str | None = None):
+        self._mostrar_texto_resultado(tabs.tab("📋  Resultado"), resumen)
+        self._mostrar_texto_resultado(tabs.tab("📊  Detalle"), detalle or resumen)
+
+    def _mostrar_texto_resultado(self, parent, texto: str):
+        for child in parent.winfo_children():
+            child.destroy()
+        bg = "#1a1a1a" if self._modo_oscuro else "#ffffff"
+        fg = "#f0f0f0" if self._modo_oscuro else "#111827"
+        box = ctk.CTkTextbox(
+            parent,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=bg,
+            text_color=fg,
+            corner_radius=8,
+        )
+        box.pack(fill="both", expand=True, padx=8, pady=8)
+        box.insert("1.0", texto)
+        box.configure(state="disabled")
+
+    def _matriz_a_texto(self, titulo: str, filas) -> str:
+        lineas = [titulo]
+        for fila in filas:
+            lineas.append("  [" + "  ".join(str(v) for v in fila) + "]")
+        return "\n".join(lineas)
+
     def _crear_treeview(self, parent, columnas: list) -> ttk.Treeview:
         """Crea un Treeview estilizado con scrollbar y filas alternadas."""
         # El fondo del contenedor debe coincidir con el del tab en el tema activo
@@ -497,10 +580,13 @@ class AplicacionPrincipal(ctk.CTk):
 
     def _panel_resultado(self, parent, raiz, iteraciones: int):
         """Mini-banner con la raíz encontrada."""
+        self._limpiar_banners(parent)
+
         frame = ctk.CTkFrame(parent, fg_color=self._t("bg_card"), corner_radius=8)
+        frame._mensaje_temporal = True
         frame.pack(fill="x", padx=8, pady=(8, 2))
 
-        # ¡Este es el truco! Si es número, le pone los decimales. Si es texto, lo imprime normal.
+
         texto_raiz = f"{raiz:.8f}" if isinstance(raiz, (int, float)) else str(raiz)
 
         ctk.CTkLabel(
@@ -737,9 +823,13 @@ class AplicacionPrincipal(ctk.CTk):
         except ValueError:
             self._mostrar_error(self.tree_biseccion, "Ingresa números válidos en los campos.")
             return
+        if not self._validar_tolerancia(tol, self.tree_biseccion):
+            return
+        if not self._validar_numeros(self.tree_biseccion, a=a, b=b):
+            return
 
         metodo   = MetodoBiseccion()
-        resultado = metodo.calcular(funcion_str, a, b, tol)
+        resultado = self._calcular_seguro(metodo.calcular, funcion_str, a, b, tol)
 
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_biseccion.tab("📊  Tabla de Iteraciones"),
@@ -811,12 +901,21 @@ class AplicacionPrincipal(ctk.CTk):
             b = float(self.entrada_b_rf.get())
             tol = float(self.entrada_tol_rf.get())
         except ValueError:
+            self._mostrar_error(self.tree_rf, "Ingresa números válidos en los campos.")
+            return
+        if not self._validar_tolerancia(tol, self.tree_rf):
+            return
+        if not self._validar_numeros(self.tree_rf, a=a, b=b):
             return
 
         metodo    = MetodoReglaFalsa()
-        resultado = metodo.calcular(funcion_str, a, b, tol)
+        resultado = self._calcular_seguro(metodo.calcular, funcion_str, a, b, tol)
 
         if "error" in resultado:
+            self._mostrar_error_label(
+                self.tabs_rf.tab("📊  Tabla de Iteraciones"),
+                resultado["error"]
+            )
             return
 
         filas = []
@@ -832,7 +931,7 @@ class AplicacionPrincipal(ctk.CTk):
         tab_tabla = self.tabs_rf.tab("📊  Tabla de Iteraciones")
         self._limpiar_banners(tab_tabla)
         self._panel_resultado(tab_tabla, resultado["raiz_aproximada"],
-                              resultado["total_iteraciones"])
+                                    resultado["total_iteraciones"])
 
         self.dibujar_grafico(
             funcion_str, a, b,
@@ -841,7 +940,7 @@ class AplicacionPrincipal(ctk.CTk):
             tipo_metodo="cerrado",
             metodo_nombre="Regla Falsa",
         )
-
+    
     # ══════════════════════════════════════════
     #  ─────────── NEWTON-RAPHSON ─────────────
     # ══════════════════════════════════════════
@@ -877,14 +976,23 @@ class AplicacionPrincipal(ctk.CTk):
             x0  = float(self.entrada_x0_nw.get())
             tol = float(self.entrada_tol_nw.get())
         except ValueError:
+            self._mostrar_error(self.tree_nw, "Ingresa números válidos en los campos.")
+            return
+        if not self._validar_tolerancia(tol, self.tree_nw):
+            return
+        if not self._validar_numeros(self.tree_nw, x0=x0):
             return
 
         metodo    = MetodoNewton()
-        resultado = metodo.calcular(funcion_str, x0, tol)
+        resultado = self._calcular_seguro(metodo.calcular, funcion_str, x0, tol)
 
         if "error" in resultado:
+            self._mostrar_error_label(
+            self.tabs_nw.tab("📊  Tabla de Iteraciones"),
+            resultado["error"]
+            )
             return
-
+    
         filas = []
         for f in resultado["tabla_iteraciones"]:
             err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
@@ -951,14 +1059,23 @@ class AplicacionPrincipal(ctk.CTk):
             x1  = float(self.entrada_x1_sec.get())
             tol = float(self.entrada_tol_sec.get())
         except ValueError:
+            self._mostrar_error(self.tree_sec, "Ingresa números válidos en los campos.")
             return
-
+        if not self._validar_tolerancia(tol, self.tree_sec):
+            return
+        if not self._validar_numeros(self.tree_sec, x0=x0, x1=x1):
+            return
+        
         metodo    = MetodoSecante()
-        resultado = metodo.calcular(funcion_str, x0, x1, tol)
+        resultado = self._calcular_seguro(metodo.calcular, funcion_str, x0, x1, tol)
 
         if "error" in resultado:
+            self._mostrar_error_label(
+            self.tabs_sec.tab("📊  Tabla de Iteraciones"),
+            resultado["error"]
+            )
             return
-
+    
         filas = []
         for f in resultado["tabla_iteraciones"]:
             xi_ant = f"{f['xi_anterior']:.6f}" if f['xi_anterior'] is not None else "N/A"
@@ -1020,12 +1137,21 @@ class AplicacionPrincipal(ctk.CTk):
             x0  = float(self.entrada_x0_pf.get())
             tol = float(self.entrada_tol_pf.get())
         except ValueError:
+            self._mostrar_error(self.tree_pf, "Ingresa números válidos en los campos.")
             return
-
+        if not self._validar_tolerancia(tol, self.tree_pf):
+            return
+        if not self._validar_numeros(self.tree_pf, x0=x0):
+            return
+    
         metodo    = MetodoPuntoFijo()
-        resultado = metodo.calcular(g_str, x0, tol)
+        resultado = self._calcular_seguro(metodo.calcular, g_str, x0, tol)
 
         if "error" in resultado:
+            self._mostrar_error_label(
+            self.tabs_pf.tab("📊  Tabla de Iteraciones"),
+            resultado["error"]
+            )
             return
 
         filas = []
@@ -1106,9 +1232,13 @@ class AplicacionPrincipal(ctk.CTk):
         except ValueError:
             self._mostrar_error(self.tree_mul, "Ingresa números válidos en todos los campos.")
             return
+        if not self._validar_tolerancia(tol, self.tree_mul):
+            return
+        if not self._validar_numeros(self.tree_mul, x0=x0, x1=x1, x2=x2):
+            return
 
         metodo    = MetodoMuller()
-        resultado = metodo.calcular(funcion_str, x0, x1, x2, tol)
+        resultado = self._calcular_seguro(metodo.calcular, funcion_str, x0, x1, x2, tol)
 
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_mul.tab("📊  Tabla de Iteraciones"), resultado["error"])
@@ -1189,9 +1319,13 @@ class AplicacionPrincipal(ctk.CTk):
         except ValueError:
             self._mostrar_error(self.tree_bai, "Ingresa números válidos en todos los campos.")
             return
+        if not self._validar_tolerancia(tol, self.tree_bai):
+            return
+        if not self._validar_numeros(self.tree_bai, r0=r0, s0=s0):
+            return
 
         metodo    = MetodoBairstow()
-        resultado = metodo.calcular(funcion_str, r0, s0, tol)
+        resultado = self._calcular_seguro(metodo.calcular, funcion_str, r0, s0, tol)
 
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_bai.tab("📊  Tabla de Iteraciones"), resultado["error"])
@@ -1271,9 +1405,13 @@ class AplicacionPrincipal(ctk.CTk):
         except ValueError:
             self._mostrar_error(self.tree_hn, "Ingresa números válidos en todos los campos.")
             return
+        if not self._validar_tolerancia(tol, self.tree_hn):
+            return
+        if not self._validar_numeros(self.tree_hn, x0=x0):
+            return
 
         metodo = MetodoHornerNewton()
-        resultado = metodo.calcular(funcion_str, x0, tol)
+        resultado = self._calcular_seguro(metodo.calcular, funcion_str, x0, tol)
 
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_hn.tab("📊  Tabla de Iteraciones"), resultado["error"])
@@ -1306,26 +1444,429 @@ class AplicacionPrincipal(ctk.CTk):
             metodo_nombre="Método de Horner-Newton"
         )
 
+    # ══════════════════════════════════════════
+    #  ─────────── MÉTODOS AVANZADOS ──────────
+    # ══════════════════════════════════════════
+    def mostrar_avanzados(self):
+        self._vista_activa = self.mostrar_avanzados
+        self.limpiar_frame_principal()
+        self._set_btn_activo(self.btn_avanzados)
+        self._titulo("Métodos avanzados", "🧩")
+
+        metodos = [
+            ("Factorización LU", self.mostrar_lu),
+            ("Gauss-Jordan", self.mostrar_gauss_jordan),
+            ("Jacobi", self.mostrar_jacobi),
+            ("Rouché-Frobenius", self.mostrar_rouche),
+            ("Regresión cuadrática", self.mostrar_regresion_cuadratica),
+            ("Mínimos cuadrados", self.mostrar_minimos_cuadrados),
+            ("Newton dif. divididas", self.mostrar_diferencias_divididas),
+            ("Interpolación", self.mostrar_interpolacion),
+            ("Newton SENL", self.mostrar_newton_senl),
+        ]
+
+        cont = ctk.CTkFrame(self.frame_principal, fg_color="transparent")
+        cont.grid(row=2, column=0, columnspan=4, padx=24, pady=18, sticky="nsew")
+        for i, (texto, comando) in enumerate(metodos):
+            btn = ctk.CTkButton(
+                cont,
+                text=texto,
+                command=comando,
+                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+                fg_color=self._t("bg_card2"),
+                hover_color=self._t("accent_hover"),
+                text_color=self._t("text_primary"),
+                height=52,
+                corner_radius=8,
+            )
+            btn.grid(row=i // 3, column=i % 3, padx=8, pady=8, sticky="ew")
+        for col in range(3):
+            cont.grid_columnconfigure(col, weight=1)
+
+    def _abrir_metodo_avanzado(self, titulo, icono):
+        self._vista_activa = lambda: self._abrir_metodo_avanzado(titulo, icono)
+        self.limpiar_frame_principal()
+        self._set_btn_activo(self.btn_avanzados)
+        self._titulo(titulo, icono)
+        ctk.CTkButton(
+            self.frame_principal,
+            text="← Volver a métodos avanzados",
+            command=self.mostrar_avanzados,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            fg_color=self._t("bg_card2"),
+            hover_color=self._t("accent_hover"),
+            text_color=self._t("text_primary"),
+            height=34,
+            width=220,
+            corner_radius=8,
+        ).grid(row=2, column=0, padx=24, pady=(0, 8), sticky="w")
+
+    def mostrar_lu(self):
+        self._abrir_metodo_avanzado("Factorización LU", "🧮")
+        self._vista_activa = self.mostrar_lu
+        self._label("Matriz A:", 3, 0)
+        self.txt_lu_a = self._textbox(3, 1, "2 1 -1\n-3 -1 2\n-2 1 2", height=92, colspan=1)
+        self._label("Vector b:", 3, 2)
+        self.txt_lu_b = self._textbox(3, 3, "8\n-11\n-3", width=160, height=92)
+        self._boton_calcular("Calcular LU", self.ejecutar_lu, row=4)
+        self.tabs_lu = self._crear_tabs_resultado(row=5)
+        self.frame_principal.grid_rowconfigure(5, weight=1)
+
+    def ejecutar_lu(self):
+        resultado = MetodoLU().calcular(self.txt_lu_a.get("1.0", "end"), self.txt_lu_b.get("1.0", "end"))
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_lu.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = "x = [" + ", ".join(resultado["solucion"]) + "]"
+        detalle = "\n\n".join([
+            self._matriz_a_texto("P =", resultado["P"]),
+            self._matriz_a_texto("L =", resultado["L"]),
+            self._matriz_a_texto("U =", resultado["U"]),
+            "y = [" + ", ".join(resultado["y"]) + "]",
+            resumen,
+        ])
+        self._mostrar_resultado_avanzado(self.tabs_lu, resumen, detalle)
+
+    def mostrar_gauss_jordan(self):
+        self._abrir_metodo_avanzado("Método de Gauss-Jordan", "🧾")
+        self._vista_activa = self.mostrar_gauss_jordan
+        self._label("Matriz A:", 3, 0)
+        self.txt_gj_a = self._textbox(3, 1, "2 1 -1\n-3 -1 2\n-2 1 2", height=92)
+        self._label("Vector b:", 3, 2)
+        self.txt_gj_b = self._textbox(3, 3, "8\n-11\n-3", width=160, height=92)
+        self._boton_calcular("Calcular Gauss-Jordan", self.ejecutar_gauss_jordan, row=4)
+        self.tabs_gj = self._crear_tabs_resultado(row=5)
+        self.frame_principal.grid_rowconfigure(5, weight=1)
+
+    def ejecutar_gauss_jordan(self):
+        resultado = MetodoGaussJordan().calcular(self.txt_gj_a.get("1.0", "end"), self.txt_gj_b.get("1.0", "end"))
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_gj.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = resultado["tipo"]
+        if resultado["solucion"]:
+            resumen += "\n\nx = [" + ", ".join(resultado["solucion"]) + "]"
+        detalle = resumen + "\n\n" + self._matriz_a_texto("Matriz reducida =", resultado["rref"])
+        self._mostrar_resultado_avanzado(self.tabs_gj, resumen, detalle)
+
+    def mostrar_jacobi(self):
+        self._abrir_metodo_avanzado("Método de Jacobi", "🔁")
+        self._vista_activa = self.mostrar_jacobi
+        self._label("Matriz A:", 3, 0)
+        self.txt_jac_a = self._textbox(3, 1, "10 -1 2\n-1 11 -1\n2 -1 10", height=92)
+        self._label("Vector b:", 3, 2)
+        self.txt_jac_b = self._textbox(3, 3, "6\n25\n-11", width=160, height=92)
+        self._label("x0:", 4, 0)
+        self.txt_jac_x0 = self._textbox(4, 1, "0 0 0", height=42)
+        self._label("Tol / Iter:", 4, 2)
+        self.entrada_jac_tol = self._entry(4, 3, "0.01", width=80)
+        self._label("Iter:", 5, 2)
+        self.entrada_jac_iter = self._entry(5, 3, "100", width=80)
+        self._boton_calcular("Calcular Jacobi", self.ejecutar_jacobi, row=6)
+        self.tabs_jac = self._crear_tabs_resultado(row=7)
+        self.frame_principal.grid_rowconfigure(7, weight=1)
+
+    def ejecutar_jacobi(self):
+        try:
+            tol = float(self.entrada_jac_tol.get())
+            max_iter = int(float(self.entrada_jac_iter.get()))
+        except ValueError:
+            self._mostrar_error_label(self.tabs_jac.tab("📋  Resultado"), "La tolerancia e iteraciones deben ser numéricas.")
+            return
+        resultado = MetodoJacobi().calcular(
+            self.txt_jac_a.get("1.0", "end"),
+            self.txt_jac_b.get("1.0", "end"),
+            self.txt_jac_x0.get("1.0", "end"),
+            tol,
+            max_iter,
+        )
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_jac.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = ""
+        if resultado["advertencia"]:
+            resumen += resultado["advertencia"] + "\n\n"
+        resumen += "x = [" + ", ".join(resultado["solucion"]) + "]"
+        detalle = resumen + "\n\nIteraciones:\n"
+        detalle += "\n".join("  " + " | ".join(map(str, fila)) for fila in resultado["iteraciones"])
+        self._mostrar_resultado_avanzado(self.tabs_jac, resumen, detalle)
+
+    def mostrar_rouche(self):
+        self._abrir_metodo_avanzado("Teorema Rouché-Frobenius", "🧠")
+        self._vista_activa = self.mostrar_rouche
+        self._label("Matriz A:", 3, 0)
+        self.txt_rouche_a = self._textbox(3, 1, "1 1 1\n2 2 2\n1 -1 0", height=92)
+        self._label("Vector b:", 3, 2)
+        self.txt_rouche_b = self._textbox(3, 3, "6\n12\n1", width=160, height=92)
+        self._boton_calcular("Analizar sistema", self.ejecutar_rouche, row=4)
+        self.tabs_rouche = self._crear_tabs_resultado(row=5)
+        self.frame_principal.grid_rowconfigure(5, weight=1)
+
+    def ejecutar_rouche(self):
+        resultado = MetodoRoucheFrobenius().calcular(self.txt_rouche_a.get("1.0", "end"), self.txt_rouche_b.get("1.0", "end"))
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_rouche.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = resultado["conclusion"]
+        detalle = (
+            f"Rango(A) = {resultado['rango_a']}\n"
+            f"Rango(A|b) = {resultado['rango_aug']}\n"
+            f"Incógnitas = {resultado['incognitas']}\n\n"
+            f"{resumen}"
+        )
+        self._mostrar_resultado_avanzado(self.tabs_rouche, resumen, detalle)
+
+    def mostrar_regresion_cuadratica(self):
+        self._abrir_metodo_avanzado("Regresión cuadrática", "📈")
+        self._vista_activa = self.mostrar_regresion_cuadratica
+        self._label("Puntos x,y:", 3, 0)
+        self.txt_reg_puntos = self._textbox(3, 1, "0 1\n1 2.2\n2 5.1\n3 10.2\n4 17.1", height=120, colspan=2)
+        self._boton_calcular("Calcular regresión", self.ejecutar_regresion_cuadratica, row=4)
+        self.tabs_reg = self._crear_tabs_resultado(row=5)
+        self.frame_principal.grid_rowconfigure(5, weight=1)
+
+    def ejecutar_regresion_cuadratica(self):
+        resultado = MetodoRegresionCuadratica().calcular(self.txt_reg_puntos.get("1.0", "end"))
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_reg.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = f"{resultado['ecuacion']}\nR^2 = {resultado['r2']}"
+        detalle = resumen + "\n\nx | y | y_estimado | residuo\n"
+        detalle += "\n".join(" | ".join(fila) for fila in resultado["tabla"])
+        self._mostrar_resultado_avanzado(self.tabs_reg, resumen, detalle)
+
+    def mostrar_minimos_cuadrados(self):
+        self._abrir_metodo_avanzado("Mínimos cuadrados", "📉")
+        self._vista_activa = self.mostrar_minimos_cuadrados
+        self._label("Puntos x,y:", 3, 0)
+        self.txt_mc_puntos = self._textbox(3, 1, "0 1\n1 2.2\n2 5.1\n3 10.2\n4 17.1", height=120, colspan=2)
+        self._label("Grado:", 3, 2)
+        self.entrada_mc_grado = self._entry(3, 3, "2", width=80)
+        self._boton_calcular("Ajustar curva", self.ejecutar_minimos_cuadrados, row=5)
+        self.tabs_mc = self._crear_tabs_resultado(row=6)
+        self.frame_principal.grid_rowconfigure(6, weight=1)
+
+    def ejecutar_minimos_cuadrados(self):
+        resultado = MetodoMinimosCuadrados().calcular(self.txt_mc_puntos.get("1.0", "end"), self.entrada_mc_grado.get())
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_mc.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = f"{resultado['ecuacion']}\nR^2 = {resultado['r2']}"
+        detalle = resumen + "\n\nx | y | y_estimado | residuo\n"
+        detalle += "\n".join(" | ".join(fila) for fila in resultado["tabla"])
+        self._mostrar_resultado_avanzado(self.tabs_mc, resumen, detalle)
+
+    def mostrar_diferencias_divididas(self):
+        self._abrir_metodo_avanzado("Newton por diferencias divididas", "🧮")
+        self._vista_activa = self.mostrar_diferencias_divididas
+        self._label("Puntos x,y:", 3, 0)
+        self.txt_dd_puntos = self._textbox(3, 1, "0 1\n1 3\n2 2\n4 5", height=120, colspan=2)
+        self._label("Evaluar x:", 3, 2)
+        self.entrada_dd_eval = self._entry(3, 3, "3", width=80)
+        self._boton_calcular("Interpolar", self.ejecutar_diferencias_divididas, row=5)
+        self.tabs_dd = self._crear_tabs_resultado(row=6)
+        self.frame_principal.grid_rowconfigure(6, weight=1)
+
+    def ejecutar_diferencias_divididas(self):
+        resultado = MetodoNewtonDiferenciasDivididas().calcular(
+            self.txt_dd_puntos.get("1.0", "end"),
+            self.entrada_dd_eval.get(),
+        )
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_dd.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = "Polinomio:\n" + resultado["polinomio"]
+        if resultado["valor"] is not None:
+            resumen += "\n\nValor evaluado = " + resultado["valor"]
+        detalle = resumen + "\n\nCoeficientes:\n[" + ", ".join(resultado["coeficientes"]) + "]"
+        detalle += "\n\nTabla de diferencias divididas:\n"
+        detalle += "\n".join(" | ".join(fila) for fila in resultado["tabla"])
+        self._mostrar_resultado_avanzado(self.tabs_dd, resumen, detalle)
+
+    def mostrar_interpolacion(self):
+        self._abrir_metodo_avanzado("Interpolación de funciones", "📌")
+        self._vista_activa = self.mostrar_interpolacion
+        self._label("Puntos x,y:", 3, 0)
+        self.txt_int_puntos = self._textbox(3, 1, "0 1\n1 3\n2 2\n4 5", height=120, colspan=2)
+        self._label("Evaluar x:", 3, 2)
+        self.entrada_int_eval = self._entry(3, 3, "3", width=80)
+        self._boton_calcular("Interpolar", self.ejecutar_interpolacion, row=5)
+        self.tabs_int = self._crear_tabs_resultado(row=6)
+        self.frame_principal.grid_rowconfigure(6, weight=1)
+
+    def ejecutar_interpolacion(self):
+        resultado = MetodoInterpolacionLagrange().calcular(
+            self.txt_int_puntos.get("1.0", "end"),
+            self.entrada_int_eval.get(),
+        )
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_int.tab("📋  Resultado"), resultado["error"])
+            return
+        resumen = "Polinomio interpolante:\n" + resultado["polinomio"]
+        if resultado["valor"] is not None:
+            resumen += "\n\nValor evaluado = " + resultado["valor"]
+        self._mostrar_resultado_avanzado(self.tabs_int, resumen, resumen)
+
+    def mostrar_newton_senl(self):
+        self._abrir_metodo_avanzado("Newton para SENL", "🧬")
+        self._vista_activa = self.mostrar_newton_senl
+        self._label("Ecuaciones:", 3, 0)
+        self.txt_senl_ecs = self._textbox(3, 1, "x**2 + y**2 - 4\nx - y - 1", height=92)
+        self._label("Variables:", 3, 2)
+        self.entrada_senl_vars = self._entry(3, 3, "x,y", width=120)
+        self._label("x0:", 4, 0)
+        self.txt_senl_x0 = self._textbox(4, 1, "1.5 0.5", height=42)
+        self._label("Tol / Iter:", 4, 2)
+        self.entrada_senl_tol = self._entry(4, 3, "0.01", width=80)
+        self._label("Iter:", 5, 2)
+        self.entrada_senl_iter = self._entry(5, 3, "50", width=80)
+        self._boton_calcular("Calcular Newton SENL", self.ejecutar_newton_senl, row=6)
+        self.tabs_senl = self._crear_tabs_resultado(row=7)
+        self.frame_principal.grid_rowconfigure(7, weight=1)
+
+    def ejecutar_newton_senl(self):
+        try:
+            tol = float(self.entrada_senl_tol.get())
+            max_iter = int(float(self.entrada_senl_iter.get()))
+        except ValueError:
+            self._mostrar_error_label(self.tabs_senl.tab("📋  Resultado"), "La tolerancia e iteraciones deben ser numéricas.")
+            return
+        resultado = MetodoNewtonSENL().calcular(
+            self.txt_senl_ecs.get("1.0", "end"),
+            self.entrada_senl_vars.get(),
+            self.txt_senl_x0.get("1.0", "end"),
+            tol,
+            max_iter,
+        )
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_senl.tab("📋  Resultado"), resultado["error"])
+            return
+        pares = [f"{var} = {val}" for var, val in zip(resultado["variables"], resultado["solucion"])]
+        resumen = "Solución:\n" + "\n".join(pares)
+        detalle = resumen + "\n\nIteraciones:\n"
+        detalle += "\n".join("  " + " | ".join(map(str, fila)) for fila in resultado["iteraciones"])
+        self._mostrar_resultado_avanzado(self.tabs_senl, resumen, detalle)
+
     # ──────────────────────────────────────────
     #  HELPERS DE ERROR
     # ──────────────────────────────────────────
+    def _validar_tolerancia(self, tolerancia: float, tree: ttk.Treeview) -> bool:
+        if not math.isfinite(tolerancia) or tolerancia <= 0:
+            self._mostrar_error(tree, "La tolerancia debe ser un número mayor que 0.")
+            return False
+        return True
+
+    def _validar_numeros(self, tree: ttk.Treeview, **valores) -> bool:
+        for nombre, valor in valores.items():
+            if not math.isfinite(valor):
+                self._mostrar_error(
+                    tree,
+                    f"El valor {nombre} debe ser un número real finito. Evita nan, inf o -inf."
+                )
+                return False
+        return True
+
+    def _calcular_seguro(self, funcion_calculo, *args):
+        try:
+            return funcion_calculo(*args)
+        except ZeroDivisionError:
+            return {"error": "Se produjo una división entre cero durante el cálculo."}
+        except OverflowError:
+            return {"error": "El cálculo produjo un número demasiado grande para representarse."}
+        except ValueError as e:
+            return {"error": f"Error matemático al evaluar la función: {e}"}
+        except Exception as e:
+            return {"error": f"Error inesperado durante el cálculo: {e}"}
+
+    def _mensaje_con_sugerencia(self, mensaje: str) -> str:
+        texto = str(mensaje)
+        lower = texto.lower()
+
+        if "parse" in lower or "syntax" in lower or "interpretar" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: revisa la sintaxis. Usa x como variable, ** para potencias, "
+                "log(x) para ln(x), y funciones como sin(x), cos(x), tan(x), exp(x)."
+            )
+        if "división entre cero" in lower or "division" in lower or "zero" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: cambia el valor inicial o el intervalo para evitar evaluar "
+                "la función en un punto donde el denominador sea 0."
+            )
+        if "intervalo" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: elige a y b de forma que f(a) y f(b) tengan signos opuestos."
+            )
+        if "derivada" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: prueba otro valor inicial donde la derivada no sea 0."
+            )
+        if "diverge" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: cambia los valores iniciales, usa una tolerancia razonable "
+                "o prueba un método más adecuado para esa función."
+            )
+        if "determinante" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: cambia los valores iniciales para evitar un sistema singular."
+            )
+        if ("matriz" in lower or "vector" in lower) and "singular" not in lower and "jacobiana" not in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: escribe matrices por filas, separando números con espacios. "
+                "Ejemplo: 2 1 -1 en una fila, y asegúrate de que las dimensiones coincidan."
+            )
+        if "puntos" in lower or "punto" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: escribe un punto por fila en formato x y, por ejemplo: 0 1. "
+                "No repitas valores de x en interpolación."
+            )
+        if "diagonal" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: reordena las ecuaciones para evitar ceros en la diagonal o usa otro método."
+            )
+        if "singular" in lower or "jacobiana" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: cambia los valores iniciales o revisa si el sistema tiene dependencia entre ecuaciones."
+            )
+        if "iteraciones" in lower or "grado" in lower or "tolerancia" in lower:
+            return (
+                f"{texto}\n\n"
+                "Cómo solucionarlo: usa tolerancia mayor que 0, iteraciones enteras positivas y grados enteros válidos."
+            )
+        return texto
+
     def _mostrar_error_label(self, parent, mensaje: str):
-        ctk.CTkLabel(
+        self._limpiar_banners(parent)
+        mensaje = self._mensaje_con_sugerencia(mensaje)
+
+        lbl = ctk.CTkLabel(
             parent,
             text=f"⚠️  {mensaje}",
             text_color=self._t("accent"),
             font=ctk.CTkFont(family="Segoe UI", size=12),
-        ).pack(pady=20)
+            wraplength=900,
+            justify="center",
+        )
+        lbl._mensaje_temporal = True
+        lbl.pack(pady=20)
 
     def _mostrar_error(self, tree: ttk.Treeview, mensaje: str):
         tree.delete(*tree.get_children())
         tree.insert("", "end", values=[mensaje] + [""] * 5)
 
     def _limpiar_banners(self, tab):
-        """Elimina banners de resultado anteriores de la pestaña."""
+        """Elimina mensajes anteriores de error o resultado."""
         for child in tab.winfo_children():
-            # Solo elimina CTkFrames que contienen el banner
-            if isinstance(child, ctk.CTkFrame) and child.winfo_height() < 50:
+            if getattr(child, "_mensaje_temporal", False):
                 child.destroy()
 
 

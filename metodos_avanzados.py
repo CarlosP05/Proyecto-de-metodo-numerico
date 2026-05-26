@@ -1,0 +1,433 @@
+import math
+
+import numpy as np
+import sympy as sp
+
+
+def parse_matrix(text):
+    rows = []
+    for raw in text.replace(";", "\n").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = raw.replace(",", " ").split()
+        rows.append([float(p) for p in parts])
+    if not rows:
+        raise ValueError("La matriz esta vacia.")
+    width = len(rows[0])
+    if any(len(row) != width for row in rows):
+        raise ValueError("Todas las filas de la matriz deben tener la misma cantidad de columnas.")
+    matrix = np.array(rows, dtype=float)
+    if not np.all(np.isfinite(matrix)):
+        raise ValueError("La matriz no puede contener nan, inf o -inf.")
+    if matrix.size == 0:
+        raise ValueError("La matriz esta vacia.")
+    return matrix
+
+
+def parse_vector(text):
+    parts = text.replace(",", " ").replace(";", " ").split()
+    if not parts:
+        raise ValueError("El vector esta vacio.")
+    vector = np.array([float(p) for p in parts], dtype=float)
+    if not np.all(np.isfinite(vector)):
+        raise ValueError("El vector no puede contener nan, inf o -inf.")
+    return vector
+
+
+def parse_points(text):
+    points = []
+    for raw in text.replace(";", "\n").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = raw.replace(",", " ").split()
+        if len(parts) != 2:
+            raise ValueError("Cada punto debe tener exactamente dos valores: x y.")
+        points.append((float(parts[0]), float(parts[1])))
+    if len(points) < 2:
+        raise ValueError("Ingresa al menos dos puntos.")
+    if not all(math.isfinite(x) and math.isfinite(y) for x, y in points):
+        raise ValueError("Los puntos no pueden contener nan, inf o -inf.")
+    xs = [p[0] for p in points]
+    if len(set(xs)) != len(xs):
+        raise ValueError("Los valores de x no deben repetirse.")
+    return points
+
+
+def parse_positive_tolerance(value):
+    tol = float(value)
+    if not math.isfinite(tol) or tol <= 0:
+        raise ValueError("La tolerancia debe ser un numero real mayor que 0.")
+    return tol
+
+
+def parse_positive_int(value, name):
+    number = float(value)
+    if not math.isfinite(number) or number <= 0 or not number.is_integer():
+        raise ValueError(f"{name} debe ser un entero positivo.")
+    return int(number)
+
+
+def parse_non_negative_int(value, name):
+    number = float(value)
+    if not math.isfinite(number) or number < 0 or not number.is_integer():
+        raise ValueError(f"{name} debe ser un entero no negativo.")
+    return int(number)
+
+
+def parse_optional_finite(value, name):
+    if value is None or str(value).strip() == "":
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} debe ser un numero real finito.")
+    return number
+
+
+def _format_number(value, digits=8):
+    if isinstance(value, complex):
+        if abs(value.imag) < 1e-10:
+            return f"{value.real:.{digits}g}"
+        return f"{value.real:.{digits}g} {value.imag:+.{digits}g}j"
+    return f"{float(value):.{digits}g}"
+
+
+def _as_rows(matrix):
+    return [[_format_number(v) for v in row] for row in np.asarray(matrix)]
+
+
+class MetodoLU:
+    def calcular(self, matriz_str, vector_str):
+        try:
+            a = parse_matrix(matriz_str)
+            b = parse_vector(vector_str)
+            if a.shape[0] != a.shape[1]:
+                return {"error": "LU requiere una matriz cuadrada."}
+            if b.size != a.shape[0]:
+                return {"error": "El vector b debe tener la misma cantidad de filas que A."}
+
+            n = a.shape[0]
+            u = a.copy()
+            l = np.eye(n)
+            p = np.eye(n)
+
+            for k in range(n - 1):
+                pivot = k + np.argmax(np.abs(u[k:, k]))
+                if abs(u[pivot, k]) < 1e-12:
+                    return {"error": "La matriz es singular o tiene pivote cero. No se puede factorizar."}
+                if pivot != k:
+                    u[[k, pivot]] = u[[pivot, k]]
+                    p[[k, pivot]] = p[[pivot, k]]
+                    if k > 0:
+                        l[[k, pivot], :k] = l[[pivot, k], :k]
+                for i in range(k + 1, n):
+                    l[i, k] = u[i, k] / u[k, k]
+                    u[i] = u[i] - l[i, k] * u[k]
+
+            if abs(u[-1, -1]) < 1e-12:
+                return {"error": "La matriz es singular o tiene pivote cero. No se puede factorizar."}
+
+            pb = p @ b
+            y = np.linalg.solve(l, pb)
+            x = np.linalg.solve(u, y)
+            return {
+                "exito": True,
+                "P": _as_rows(p),
+                "L": _as_rows(l),
+                "U": _as_rows(u),
+                "y": [_format_number(v) for v in y],
+                "solucion": [_format_number(v) for v in x],
+            }
+        except Exception as e:
+            return {"error": f"Error en factorizacion LU: {e}"}
+
+
+class MetodoGaussJordan:
+    def calcular(self, matriz_str, vector_str):
+        try:
+            a = parse_matrix(matriz_str)
+            b = parse_vector(vector_str)
+            if a.shape[0] != b.size:
+                return {"error": "El vector b debe tener la misma cantidad de filas que A."}
+            aug = np.column_stack([a, b])
+            rows, cols = aug.shape
+            pivot_row = 0
+            pivots = []
+
+            for col in range(cols - 1):
+                pivot = pivot_row + np.argmax(np.abs(aug[pivot_row:, col]))
+                if abs(aug[pivot, col]) < 1e-12:
+                    continue
+                aug[[pivot_row, pivot]] = aug[[pivot, pivot_row]]
+                aug[pivot_row] = aug[pivot_row] / aug[pivot_row, col]
+                for r in range(rows):
+                    if r != pivot_row:
+                        aug[r] = aug[r] - aug[r, col] * aug[pivot_row]
+                pivots.append(col)
+                pivot_row += 1
+                if pivot_row == rows:
+                    break
+
+            rank_a = np.linalg.matrix_rank(a)
+            rank_aug = np.linalg.matrix_rank(np.column_stack([a, b]))
+            if rank_a < rank_aug:
+                tipo = "Sistema incompatible: no tiene solucion."
+            elif rank_a == a.shape[1]:
+                tipo = "Sistema compatible determinado: solucion unica."
+            else:
+                tipo = "Sistema compatible indeterminado: infinitas soluciones."
+
+            solucion = None
+            if rank_a == rank_aug == a.shape[1]:
+                solucion = [_format_number(v) for v in aug[:, -1]]
+
+            return {
+                "exito": True,
+                "tipo": tipo,
+                "rref": _as_rows(aug),
+                "solucion": solucion,
+            }
+        except Exception as e:
+            return {"error": f"Error en Gauss-Jordan: {e}"}
+
+
+class MetodoRoucheFrobenius:
+    def calcular(self, matriz_str, vector_str):
+        try:
+            a = parse_matrix(matriz_str)
+            b = parse_vector(vector_str)
+            if a.shape[0] != b.size:
+                return {"error": "El vector b debe tener la misma cantidad de filas que A."}
+            aug = np.column_stack([a, b])
+            rango_a = int(np.linalg.matrix_rank(a))
+            rango_aug = int(np.linalg.matrix_rank(aug))
+            n_incognitas = a.shape[1]
+            if rango_a != rango_aug:
+                conclusion = "Sistema incompatible: no tiene solucion."
+            elif rango_a == n_incognitas:
+                conclusion = "Sistema compatible determinado: tiene solucion unica."
+            else:
+                conclusion = "Sistema compatible indeterminado: tiene infinitas soluciones."
+            return {
+                "exito": True,
+                "rango_a": rango_a,
+                "rango_aug": rango_aug,
+                "incognitas": n_incognitas,
+                "conclusion": conclusion,
+            }
+        except Exception as e:
+            return {"error": f"Error en Rouche-Frobenius: {e}"}
+
+
+class MetodoJacobi:
+    def calcular(self, matriz_str, vector_str, x0_str, tolerancia, max_iter=100):
+        try:
+            a = parse_matrix(matriz_str)
+            b = parse_vector(vector_str)
+            x = parse_vector(x0_str)
+            if a.shape[0] != a.shape[1]:
+                return {"error": "Jacobi requiere una matriz cuadrada."}
+            if b.size != a.shape[0] or x.size != a.shape[0]:
+                return {"error": "b y x0 deben tener la misma dimension que A."}
+            if np.any(np.abs(np.diag(a)) < 1e-12):
+                return {"error": "Jacobi no puede usar una diagonal con ceros."}
+            tolerancia = parse_positive_tolerance(tolerancia)
+            max_iter = parse_positive_int(max_iter, "El maximo de iteraciones")
+
+            d = np.diag(a)
+            r = a - np.diagflat(d)
+            iteraciones = []
+            advertencia = ""
+            if not np.all(np.abs(np.diag(a)) > (np.sum(np.abs(a), axis=1) - np.abs(np.diag(a)))):
+                advertencia = "La matriz no es diagonalmente dominante; Jacobi puede divergir."
+
+            for i in range(1, max_iter + 1):
+                x_new = (b - r @ x) / d
+                denom = np.maximum(np.abs(x_new), 1e-12)
+                error = float(np.max(np.abs((x_new - x) / denom)) * 100)
+                iteraciones.append([i, *[_format_number(v) for v in x_new], _format_number(error)])
+                if error <= tolerancia:
+                    return {
+                        "exito": True,
+                        "advertencia": advertencia,
+                        "solucion": [_format_number(v) for v in x_new],
+                        "iteraciones": iteraciones,
+                    }
+                x = x_new
+
+            return {"error": f"Jacobi no converge en {max_iter} iteraciones. {advertencia}".strip()}
+        except Exception as e:
+            return {"error": f"Error en Jacobi: {e}"}
+
+
+class MetodoRegresionCuadratica:
+    def calcular(self, puntos_str):
+        try:
+            points = parse_points(puntos_str)
+            if len(points) < 3:
+                return {"error": "La regresion cuadratica requiere al menos 3 puntos."}
+            xs = np.array([p[0] for p in points], dtype=float)
+            ys = np.array([p[1] for p in points], dtype=float)
+            coefs = np.polyfit(xs, ys, 2)
+            pred = np.polyval(coefs, xs)
+            ss_res = float(np.sum((ys - pred) ** 2))
+            ss_tot = float(np.sum((ys - np.mean(ys)) ** 2))
+            r2 = 1.0 if ss_tot == 0 else 1 - ss_res / ss_tot
+            filas = [[_format_number(x), _format_number(y), _format_number(yh), _format_number(y - yh)]
+                     for x, y, yh in zip(xs, ys, pred)]
+            return {
+                "exito": True,
+                "coeficientes": [_format_number(v) for v in coefs],
+                "ecuacion": f"y = ({_format_number(coefs[0])})x**2 + ({_format_number(coefs[1])})x + ({_format_number(coefs[2])})",
+                "r2": _format_number(r2),
+                "tabla": filas,
+            }
+        except Exception as e:
+            return {"error": f"Error en regresion cuadratica: {e}"}
+
+
+class MetodoMinimosCuadrados:
+    def calcular(self, puntos_str, grado):
+        try:
+            points = parse_points(puntos_str)
+            grado = parse_non_negative_int(grado, "El grado")
+            if grado < 1:
+                return {"error": "El grado debe ser 1 o mayor."}
+            if len(points) <= grado:
+                return {"error": "Se necesitan mas puntos que el grado del polinomio."}
+            xs = np.array([p[0] for p in points], dtype=float)
+            ys = np.array([p[1] for p in points], dtype=float)
+            coefs = np.polyfit(xs, ys, grado)
+            pred = np.polyval(coefs, xs)
+            ss_res = float(np.sum((ys - pred) ** 2))
+            ss_tot = float(np.sum((ys - np.mean(ys)) ** 2))
+            r2 = 1.0 if ss_tot == 0 else 1 - ss_res / ss_tot
+            terms = []
+            for i, coef in enumerate(coefs):
+                power = grado - i
+                if power == 0:
+                    terms.append(f"({_format_number(coef)})")
+                elif power == 1:
+                    terms.append(f"({_format_number(coef)})x")
+                else:
+                    terms.append(f"({_format_number(coef)})x**{power}")
+            filas = [[_format_number(x), _format_number(y), _format_number(yh), _format_number(y - yh)]
+                     for x, y, yh in zip(xs, ys, pred)]
+            return {
+                "exito": True,
+                "coeficientes": [_format_number(v) for v in coefs],
+                "ecuacion": "y = " + " + ".join(terms),
+                "r2": _format_number(r2),
+                "tabla": filas,
+            }
+        except Exception as e:
+            return {"error": f"Error en minimos cuadrados: {e}"}
+
+
+class MetodoNewtonDiferenciasDivididas:
+    def calcular(self, puntos_str, evaluar_en=None):
+        try:
+            points = parse_points(puntos_str)
+            xs = [p[0] for p in points]
+            coef = [p[1] for p in points]
+            n = len(points)
+            tabla = [[None for _ in range(n)] for _ in range(n)]
+            for i in range(n):
+                tabla[i][0] = coef[i]
+            for j in range(1, n):
+                for i in range(n - j):
+                    tabla[i][j] = (tabla[i + 1][j - 1] - tabla[i][j - 1]) / (xs[i + j] - xs[i])
+            coefs = [tabla[0][j] for j in range(n)]
+            x = sp.Symbol("x")
+            poly = coefs[0]
+            term = 1
+            for i in range(1, n):
+                term *= (x - xs[i - 1])
+                poly += coefs[i] * term
+            poly = sp.expand(poly)
+            valor = None
+            xv = parse_optional_finite(evaluar_en, "El punto a evaluar")
+            if xv is not None:
+                valor = _format_number(poly.subs(x, xv))
+            return {
+                "exito": True,
+                "coeficientes": [_format_number(v) for v in coefs],
+                "polinomio": str(poly),
+                "valor": valor,
+                "tabla": [[_format_number(v) if v is not None else "" for v in row] for row in tabla],
+            }
+        except Exception as e:
+            return {"error": f"Error en diferencias divididas: {e}"}
+
+
+class MetodoInterpolacionLagrange:
+    def calcular(self, puntos_str, evaluar_en=None):
+        try:
+            points = parse_points(puntos_str)
+            x = sp.Symbol("x")
+            poly = 0
+            for i, (xi, yi) in enumerate(points):
+                li = 1
+                for j, (xj, _) in enumerate(points):
+                    if i != j:
+                        li *= (x - xj) / (xi - xj)
+                poly += yi * li
+            poly = sp.expand(poly)
+            valor = None
+            xv = parse_optional_finite(evaluar_en, "El punto a evaluar")
+            if xv is not None:
+                valor = _format_number(poly.subs(x, xv))
+            return {"exito": True, "polinomio": str(poly), "valor": valor}
+        except Exception as e:
+            return {"error": f"Error en interpolacion: {e}"}
+
+
+class MetodoNewtonSENL:
+    def calcular(self, ecuaciones_str, variables_str, x0_str, tolerancia, max_iter=50):
+        try:
+            variables = [v.strip() for v in variables_str.replace(";", ",").split(",") if v.strip()]
+            if not variables:
+                return {"error": "Indica las variables, por ejemplo: x,y."}
+            symbols = sp.symbols(variables)
+            if len(variables) == 1:
+                symbols = (symbols,)
+            local = {name: sym for name, sym in zip(variables, symbols)}
+            equations = [line.strip() for line in ecuaciones_str.splitlines() if line.strip()]
+            if len(equations) != len(symbols):
+                return {"error": "La cantidad de ecuaciones debe coincidir con la cantidad de variables."}
+            exprs = [sp.sympify(eq, locals=local) for eq in equations]
+            f_expr = sp.Matrix(exprs)
+            j_expr = f_expr.jacobian(symbols)
+            f = sp.lambdify(symbols, f_expr, "numpy")
+            jac = sp.lambdify(symbols, j_expr, "numpy")
+            x_vec = parse_vector(x0_str)
+            if x_vec.size != len(symbols):
+                return {"error": "x0 debe tener un valor inicial por cada variable."}
+            tolerancia = parse_positive_tolerance(tolerancia)
+            max_iter = parse_positive_int(max_iter, "El maximo de iteraciones")
+
+            iteraciones = []
+            for i in range(1, max_iter + 1):
+                args = tuple(float(v) for v in x_vec)
+                f_val = np.array(f(*args), dtype=float).reshape(-1)
+                j_val = np.array(jac(*args), dtype=float)
+                if not np.all(np.isfinite(f_val)) or not np.all(np.isfinite(j_val)):
+                    return {"error": "El sistema produjo nan o inf. Cambia los valores iniciales."}
+                delta = np.linalg.solve(j_val, -f_val)
+                x_new = x_vec + delta
+                error = float(np.linalg.norm(delta, ord=np.inf) * 100)
+                iteraciones.append([i, *[_format_number(v) for v in x_new], _format_number(error)])
+                if error <= tolerancia:
+                    return {
+                        "exito": True,
+                        "variables": variables,
+                        "solucion": [_format_number(v) for v in x_new],
+                        "iteraciones": iteraciones,
+                    }
+                x_vec = x_new
+            return {"error": f"Newton para SENL no converge en {max_iter} iteraciones."}
+        except np.linalg.LinAlgError:
+            return {"error": "La matriz Jacobiana es singular. Cambia los valores iniciales."}
+        except Exception as e:
+            return {"error": f"Error en Newton para SENL: {e}"}
