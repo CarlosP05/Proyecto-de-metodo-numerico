@@ -29,6 +29,7 @@ DARK = {
     "success":         "#00e676",
     "warning":         "#ffab40",
     "info":            "#40c4ff",
+    "error_border":    "#ff2244",
     # Matplotlib
     "mpl_bg":          "#111111",
     "mpl_ax_bg":       "#181818",
@@ -66,6 +67,7 @@ LIGHT = {
     "success":         "#059669",
     "warning":         "#d97706",
     "info":            "#0284c7",
+    "error_border":    "#dc2626",
     # Matplotlib
     "mpl_bg":          "#f4f6fa",
     "mpl_ax_bg":       "#ffffff",

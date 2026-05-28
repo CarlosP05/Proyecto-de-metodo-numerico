@@ -13,7 +13,7 @@ from tkinter import ttk
 import customtkinter as ctk
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import numpy as np
 import sympy as sp
 
@@ -49,6 +49,64 @@ ctk.set_default_color_theme("dark-blue")
 
 
 # ═══════════════════════════════════════════════
+#  CLASE TOOLTIP
+# ═══════════════════════════════════════════════
+class Tooltip:
+    """Pequeño texto flotante que aparece al pasar el mouse sobre un widget.
+    Aparece con un pequeño delay para no ser intrusivo."""
+
+    def __init__(self, widget, text: str, delay: int = 600):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.tip_window = None
+        self._after_id = None
+        widget.bind("<Enter>", self._schedule)
+        widget.bind("<Leave>", self._hide)
+        widget.bind("<ButtonPress>", self._hide)
+
+    def _schedule(self, event=None):
+        self._cancel()
+        self._after_id = self.widget.after(self.delay, self._show)
+
+    def _cancel(self):
+        if self._after_id:
+            self.widget.after_cancel(self._after_id)
+            self._after_id = None
+
+    def _show(self, event=None):
+        if self.tip_window:
+            return
+        # Posicionar a la derecha del widget
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() + 6
+        y = self.widget.winfo_rooty() + (self.widget.winfo_height() // 2) - 14
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tw.attributes("-topmost", True)
+        # Marco exterior con color accent como borde de 1px
+        outer = tk.Frame(tw, bg="#ff2244", padx=1, pady=1)
+        outer.pack()
+        inner = tk.Label(
+            outer,
+            text=self.text,
+            background="#1e1e1e",
+            foreground="#e0e0e0",
+            relief="flat",
+            font=("Segoe UI", 9),
+            padx=10,
+            pady=5,
+        )
+        inner.pack()
+
+    def _hide(self, event=None):
+        self._cancel()
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
+
+
+# ═══════════════════════════════════════════════
 #  CLASE PRINCIPAL
 # ═══════════════════════════════════════════════
 class AplicacionPrincipal(ctk.CTk):
@@ -63,6 +121,8 @@ class AplicacionPrincipal(ctk.CTk):
         self._btn_activo  = None          # Referencia al botón de nav activo
         self._hover_timers = {}           # Timers para animaciones hover
         self._vista_activa = None         # Función del panel actualmente visible
+        self._entradas_actuales = []      # Widgets de entrada del panel activo
+        self._tree_actual = None          # Treeview del panel activo
 
         self.title("Métodos Numéricos — Calculadora de Raíces")
         self.geometry("1100x680")
@@ -125,7 +185,7 @@ class AplicacionPrincipal(ctk.CTk):
         ).pack(anchor="w")
         ctk.CTkLabel(
             titulo_col, text="Raíces de ecuaciones",
-            font=ctk.CTkFont(family="Segoe UI", size=9),
+            font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=self._t("text_secondary")
         ).pack(anchor="w")
 
@@ -136,40 +196,48 @@ class AplicacionPrincipal(ctk.CTk):
         self._seccion_label(self.sidebar, "MÉTODOS CERRADOS", row=2)
 
         self.btn_biseccion = self._nav_button(
-            self.sidebar, "  📐  Bisección", self.mostrar_biseccion, row=3
+            self.sidebar, "  📐  Bisección", self.mostrar_biseccion, row=3,
+            tooltip="Divide el intervalo [a,b] a la mitad iterativamente"
         )
         self.btn_regla_falsa = self._nav_button(
-            self.sidebar, "  📏  Regla Falsa", self.mostrar_regla_falsa, row=4
+            self.sidebar, "  📏  Regla Falsa", self.mostrar_regla_falsa, row=4,
+            tooltip="Interpolación lineal entre a y b para estimar la raíz"
         )
 
         # ── Sección Métodos Abiertos
         self._seccion_label(self.sidebar, "MÉTODOS ABIERTOS", row=5)
 
         self.btn_newton = self._nav_button(
-            self.sidebar, "  ⚡  Newton-Raphson", self.mostrar_newton, row=6
+            self.sidebar, "  ⚡  Newton-Raphson", self.mostrar_newton, row=6,
+            tooltip="Usa la derivada f'(x) para converger rápidamente"
         )
         self.btn_secante = self._nav_button(
-            self.sidebar, "  📈  Secante", self.mostrar_secante, row=7
+            self.sidebar, "  📈  Secante", self.mostrar_secante, row=7,
+            tooltip="Aproxima la derivada usando dos puntos iniciales"
         )
         self.btn_punto_fijo = self._nav_button(
-            self.sidebar, "  🔄  Punto Fijo", self.mostrar_punto_fijo, row=8
+            self.sidebar, "  🔄  Punto Fijo", self.mostrar_punto_fijo, row=8,
+            tooltip="Itera x = g(x) hasta que converge al punto fijo"
         )
 
         # ── NUEVA SECCIÓN: Raíces de Polinomios ──
         self._seccion_label(self.sidebar, "RAÍCES DE POLINOMIOS", row=9)
 
         self.btn_muller = self._nav_button(
-            self.sidebar, "  🧮  Müller", self.mostrar_muller, row=10    
+            self.sidebar, "  🧮  Müller", self.mostrar_muller, row=10,
+            tooltip="Usa parábola para encontrar raíces complejas"
         )
-        # Nota: Aquí dejamos espacio para futuros métodos polinomiales
         self.btn_bairstow = self._nav_button(
-            self.sidebar, "  ✂️  Bairstow", self.mostrar_bairstow, row=11
+            self.sidebar, "  ✂️  Bairstow", self.mostrar_bairstow, row=11,
+            tooltip="Extrae factores cuadráticos (raíces complejas)"
         )
         self.btn_horner = self._nav_button(
-            self.sidebar, "  📝  Horner-Newton", self.mostrar_horner, row=12
+            self.sidebar, "  📝  Horner-Newton", self.mostrar_horner, row=12,
+            tooltip="Evaluación eficiente con el esquema de Horner"
         )
         self.btn_avanzados = self._nav_button(
-            self.sidebar, "  🧩  Métodos avanzados", self.mostrar_avanzados, row=13
+            self.sidebar, "  🧩  Métodos avanzados", self.mostrar_avanzados, row=13,
+            tooltip="Álgebra lineal, interpolación, regresión y sistemas no lineales"
         )
 
         # Separador inferior
@@ -200,7 +268,7 @@ class AplicacionPrincipal(ctk.CTk):
         self.btn_tema.pack(side="right")
 
     # ──────────────────────────────────────────
-    #  UTILIDADES DE SIDEBAR (¡Estas son las funciones que faltaban!)
+    #  UTILIDADES DE SIDEBAR
     # ──────────────────────────────────────────
     def _sep(self, parent, row: int):
         """Línea divisora horizontal."""
@@ -210,14 +278,14 @@ class AplicacionPrincipal(ctk.CTk):
     def _seccion_label(self, parent, texto: str, row: int):
         lbl = ctk.CTkLabel(
             parent, text=texto,
-            font=ctk.CTkFont(family="Segoe UI", size=9, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
             text_color=self._t("text_secondary"),
             anchor="w"
         )
         lbl.grid(row=row, column=0, padx=20, pady=(12, 2), sticky="w")
 
-    def _nav_button(self, parent, texto: str, comando, row: int):
-        """Crea un botón de navegación con animación hover."""
+    def _nav_button(self, parent, texto: str, comando, row: int, tooltip: str = ""):
+        """Crea un botón de navegación con animación hover y tooltip opcional."""
         btn = ctk.CTkButton(
             parent,
             text=texto,
@@ -236,7 +304,13 @@ class AplicacionPrincipal(ctk.CTk):
         # Micro-animaciones hover
         btn.bind("<Enter>", lambda e, b=btn: self._on_nav_enter(b))
         btn.bind("<Leave>", lambda e, b=btn: self._on_nav_leave(b))
+
+        # Tooltip descriptivo (aparece a la derecha del sidebar)
+        if tooltip:
+            Tooltip(btn, tooltip)
+
         return btn
+
     # ── ÁREA PRINCIPAL ────────────────────────
     def _construir_area_principal(self):
         self.frame_principal = ctk.CTkFrame(
@@ -248,6 +322,7 @@ class AplicacionPrincipal(ctk.CTk):
         )
         self.frame_principal.grid(row=0, column=1, padx=(0, 16), pady=16, sticky="nsew")
         self.frame_principal.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        # La fila de contenido (tabs) se configura dinámicamente en cada vista
 
     # ──────────────────────────────────────────
     #  ANIMACIONES DE HOVER (SIDEBAR)
@@ -327,21 +402,25 @@ class AplicacionPrincipal(ctk.CTk):
     def limpiar_frame_principal(self):
         for widget in self.frame_principal.winfo_children():
             widget.destroy()
-        # Resetear pesos de filas
-        for i in range(10):
-            self.frame_principal.grid_rowconfigure(i, weight=0)
-        self.frame_principal.grid_rowconfigure(4, weight=1)
+        # Resetear pesos de todas las filas usadas (hasta 12 cubre todos los casos)
+        for i in range(12):
+            self.frame_principal.grid_rowconfigure(i, weight=0, minsize=0)
+        # Resetear entradas y tree del panel anterior
+        self._entradas_actuales = []
+        self._tree_actual = None
+
+    def _set_tab_row(self, row: int):
+        """Configura la fila de tabs/resultados para que se expanda fluidamente con la ventana."""
+        self.frame_principal.grid_rowconfigure(row, weight=1, minsize=180)
 
     def _titulo(self, texto: str, icono: str = ""):
         """Crea un encabezado de sección con icono y línea de acento."""
-        # Usamos fg_color="transparent" para heredar el fondo del frame principal
-        # y que CustomTkinter lo gestione correctamente en ambos temas.
         frame = ctk.CTkFrame(
             self.frame_principal,
             fg_color="transparent",
             corner_radius=0,
         )
-        frame.grid(row=0, column=0, columnspan=4, padx=24, pady=(20, 4), sticky="ew")
+        frame.grid(row=0, column=0, columnspan=4, padx=24, pady=(24, 4), sticky="ew")
         frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -373,9 +452,7 @@ class AplicacionPrincipal(ctk.CTk):
         return lbl
 
     def _entry(self, row: int, col: int, placeholder: str = "", width: int = 120):
-        # No forzamos fg_color/text_color: dejamos que CustomTkinter use su
-        # sistema de temas (Light/Dark) automáticamente. Solo ajustamos lo
-        # estrictamente necesario que CTK no cubre (border_color, corner_radius).
+        """Entry estilizado. border_width explícito permite la animación de error rojo."""
         if self._modo_oscuro:
             e = ctk.CTkEntry(
                 self.frame_principal,
@@ -385,6 +462,7 @@ class AplicacionPrincipal(ctk.CTk):
                 font=ctk.CTkFont(family="Segoe UI", size=12),
                 fg_color="#1a1a1a",
                 border_color="#2a2a2a",
+                border_width=1,
                 text_color="#f0f0f0",
                 placeholder_text_color="#666666",
                 corner_radius=8,
@@ -398,6 +476,7 @@ class AplicacionPrincipal(ctk.CTk):
                 font=ctk.CTkFont(family="Segoe UI", size=12),
                 fg_color="#ffffff",
                 border_color="#d1d5db",
+                border_width=1,
                 text_color="#111827",
                 placeholder_text_color="#9ca3af",
                 corner_radius=8,
@@ -426,8 +505,8 @@ class AplicacionPrincipal(ctk.CTk):
         box.grid(row=row, column=col, columnspan=colspan, padx=(4, 16), pady=8, sticky="nsew")
         return box
 
-    def _boton_calcular(self, texto: str, comando, row: int, col: int = 0, colspan: int = 4):
-        """Botón 'Calcular Raíz' con efecto glow en modo oscuro."""
+    def _boton_calcular(self, texto: str, comando, row: int, col: int = 0, colspan: int = 2):
+        """Botón 'Calcular Raíz' con efecto glow. Ocupa col 0-1 para dejar espacio al botón limpiar."""
         btn = ctk.CTkButton(
             self.frame_principal,
             text=texto,
@@ -440,13 +519,48 @@ class AplicacionPrincipal(ctk.CTk):
             width=200,
             corner_radius=10,
         )
-        btn.grid(row=row, column=col, columnspan=colspan, padx=16, pady=(8, 16))
+        btn.grid(row=row, column=col, columnspan=colspan, padx=(16, 4), pady=(8, 16), sticky="w")
 
         # Micro-animación: hover scale (visual approximation via color pulse)
         btn.bind("<Enter>",  lambda e: self._btn_hover_enter(btn))
         btn.bind("<Leave>",  lambda e: self._btn_hover_leave(btn))
         btn.bind("<Button-1>", lambda e: self._btn_click_anim(btn))
         return btn
+
+    def _boton_limpiar(self, row: int, col: int = 2, colspan: int = 2):
+        """Botón secundario 🗑️ discreto para limpiar entradas y resultados del panel activo."""
+        btn = ctk.CTkButton(
+            self.frame_principal,
+            text="🗑️  Limpiar",
+            command=self._limpiar_entradas_actuales,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="transparent",
+            hover_color=self._t("bg_card2"),
+            text_color=self._t("text_secondary"),
+            border_width=1,
+            border_color=self._t("border"),
+            height=40,
+            width=110,
+            corner_radius=10,
+        )
+        btn.grid(row=row, column=col, columnspan=colspan, padx=(0, 16), pady=(8, 16), sticky="e")
+        return btn
+
+    def _limpiar_entradas_actuales(self):
+        """Limpia todas las entradas registradas y el Treeview del panel activo."""
+        for widget in self._entradas_actuales:
+            if isinstance(widget, ctk.CTkEntry):
+                widget.delete(0, "end")
+                # Restaurar borde normal por si quedó en estado de error
+                bc = "#2a2a2a" if self._modo_oscuro else "#d1d5db"
+                widget.configure(border_color=bc, border_width=1)
+            elif isinstance(widget, ctk.CTkTextbox):
+                widget.delete("1.0", "end")
+        if self._tree_actual is not None:
+            try:
+                self._tree_actual.delete(*self._tree_actual.get_children())
+            except Exception:
+                pass
 
     def _btn_hover_enter(self, btn):
         btn.configure(fg_color=self._t("accent_hover"))
@@ -458,6 +572,37 @@ class AplicacionPrincipal(ctk.CTk):
         """Pulso rápido al hacer clic."""
         btn.configure(fg_color=self._t("accent_glow"))
         self.after(120, lambda: btn.configure(fg_color=self._t("accent")))
+
+    # ──────────────────────────────────────────
+    #  FEEDBACK VISUAL EN ENTRADAS INVÁLIDAS
+    # ──────────────────────────────────────────
+    def _marcar_entrada_error(self, *entries):
+        """Pone borde rojo 2.5 s en las entries inválidas, luego lo restaura."""
+        bc_normal = "#2a2a2a" if self._modo_oscuro else "#d1d5db"
+        for entry in entries:
+            if entry is None:
+                continue
+            entry.configure(border_color=self._t("error_border"), border_width=2)
+            self.after(2500, lambda e=entry: e.configure(
+                border_color=bc_normal,
+                border_width=1,
+            ))
+
+    def _detectar_entries_invalidas(self, *entries):
+        """Detecta y marca en rojo las entries que estén vacías o no sean numéricas."""
+        invalidas = []
+        for e in entries:
+            val = e.get().strip()
+            if not val:
+                invalidas.append(e)
+                continue
+            try:
+                float(val)
+            except ValueError:
+                invalidas.append(e)
+        if invalidas:
+            self._marcar_entrada_error(*invalidas)
+        return invalidas
 
     def _crear_tabs(self, row: int):
         """Crea las pestañas 'Tabla de Iteraciones' y 'Gráfica'."""
@@ -586,7 +731,6 @@ class AplicacionPrincipal(ctk.CTk):
         frame._mensaje_temporal = True
         frame.pack(fill="x", padx=8, pady=(8, 2))
 
-
         texto_raiz = f"{raiz:.8f}" if isinstance(raiz, (int, float)) else str(raiz)
 
         ctk.CTkLabel(
@@ -598,7 +742,7 @@ class AplicacionPrincipal(ctk.CTk):
         ).pack(padx=12, pady=6, anchor="w")
 
     # ──────────────────────────────────────────
-    #  GRÁFICA MATPLOTLIB (MEJORADA)
+    #  GRÁFICA MATPLOTLIB (CON TOOLBAR INTERACTIVA)
     # ──────────────────────────────────────────
     def dibujar_grafico(self, funcion_str, val_1, val_2, raiz,
                         frame_destino, tipo_metodo="cerrado", metodo_nombre=""):
@@ -635,12 +779,12 @@ class AplicacionPrincipal(ctk.CTk):
             leg_bg  = t("mpl_legend_bg")
             leg_eg  = t("mpl_legend_edge")
 
-            # ── Figura
-            fig, ax = plt.subplots(figsize=(6.5, 4.2), dpi=100)
+            # ── Figura (altura reducida para dejar espacio a la toolbar)
+            fig, ax = plt.subplots(figsize=(6.5, 4.0), dpi=100)
             fig.patch.set_facecolor(bg)
             ax.set_facecolor(ax_bg)
 
-            # Curva principal (degradado de opacidad con gradiente)
+            # Curva principal
             ax.plot(x_vals, y_vals, color=col_ln, linewidth=2.2,
                     alpha=0.9, label=f"f(x) = {funcion_str}", zorder=3)
 
@@ -694,12 +838,25 @@ class AplicacionPrincipal(ctk.CTk):
                 framealpha=0.9,
             )
 
-            fig.tight_layout(pad=1.2)
+            fig.tight_layout(pad=1.0)
 
-            # ── Incrustar en CustomTkinter
+            # ── Incrustar canvas en CustomTkinter
             canvas = FigureCanvasTkAgg(fig, master=frame_destino)
             canvas.draw()
-            canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=4)
+            canvas.get_tk_widget().pack(fill="both", expand=True, padx=4, pady=(4, 0))
+
+            # ── Toolbar de navegación interactiva (zoom, pan, guardar)
+            toolbar_frame = tk.Frame(frame_destino, bg=bg, height=32)
+            toolbar_frame.pack(fill="x", padx=4, pady=(0, 4))
+            toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+            toolbar.config(background=bg)
+            for child in toolbar.winfo_children():
+                try:
+                    child.config(background=bg)
+                except Exception:
+                    pass
+            toolbar.update()
+
             plt.close(fig)
 
         except Exception as e:
@@ -801,11 +958,17 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 4, 0)
         self.entrada_tol = self._entry(4, 1, "Ej: 0.5")
 
+        # Registrar entradas para el botón limpiar
+        self._entradas_actuales = [self.entrada_funcion, self.entrada_a,
+                                   self.entrada_b, self.entrada_tol]
+
+        # Botones Calcular + Limpiar en la misma fila
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_biseccion, row=5)
+        self._boton_limpiar(row=5)
 
         # Tabs
         self.tabs_biseccion = self._crear_tabs(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
         # Treeview en pestaña 1
         tab_tabla = self.tabs_biseccion.tab("📊  Tabla de Iteraciones")
@@ -813,6 +976,7 @@ class AplicacionPrincipal(ctk.CTk):
             tab_tabla,
             ["Iter", "a", "b", "c (Punto Medio)", "f(c)", "Error (%)"]
         )
+        self._tree_actual = self.tree_biseccion
 
     def ejecutar_biseccion(self):
         funcion_str = self.entrada_funcion.get().strip()
@@ -821,6 +985,7 @@ class AplicacionPrincipal(ctk.CTk):
             b = float(self.entrada_b.get())
             tol = float(self.entrada_tol.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_a, self.entrada_b, self.entrada_tol)
             self._mostrar_error(self.tree_biseccion, "Ingresa números válidos en los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_biseccion):
@@ -883,16 +1048,20 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 4, 0)
         self.entrada_tol_rf = self._entry(4, 1, "Ej: 0.5")
 
+        self._entradas_actuales = [self.entrada_funcion_rf, self.entrada_a_rf,
+                                   self.entrada_b_rf, self.entrada_tol_rf]
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_regla_falsa, row=5)
+        self._boton_limpiar(row=5)
 
         self.tabs_rf = self._crear_tabs(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
         tab_tabla = self.tabs_rf.tab("📊  Tabla de Iteraciones")
         self.tree_rf = self._crear_treeview(
             tab_tabla,
             ["Iter", "a", "b", "c (R. Falsa)", "f(c)", "Error (%)"]
         )
+        self._tree_actual = self.tree_rf
 
     def ejecutar_regla_falsa(self):
         funcion_str = self.entrada_funcion_rf.get().strip()
@@ -901,6 +1070,7 @@ class AplicacionPrincipal(ctk.CTk):
             b = float(self.entrada_b_rf.get())
             tol = float(self.entrada_tol_rf.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_a_rf, self.entrada_b_rf, self.entrada_tol_rf)
             self._mostrar_error(self.tree_rf, "Ingresa números válidos en los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_rf):
@@ -940,7 +1110,7 @@ class AplicacionPrincipal(ctk.CTk):
             tipo_metodo="cerrado",
             metodo_nombre="Regla Falsa",
         )
-    
+
     # ══════════════════════════════════════════
     #  ─────────── NEWTON-RAPHSON ─────────────
     # ══════════════════════════════════════════
@@ -959,16 +1129,19 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 3, 2)
         self.entrada_tol_nw = self._entry(3, 3, "Ej: 0.5")
 
+        self._entradas_actuales = [self.entrada_funcion_nw, self.entrada_x0_nw, self.entrada_tol_nw]
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_newton, row=4)
+        self._boton_limpiar(row=4)
 
         self.tabs_nw = self._crear_tabs(row=5)
-        self.frame_principal.grid_rowconfigure(5, weight=1)
+        self._set_tab_row(5)
 
         tab_tabla = self.tabs_nw.tab("📊  Tabla de Iteraciones")
         self.tree_nw = self._crear_treeview(
             tab_tabla,
             ["Iter", "xᵢ", "f(xᵢ)", "f'(xᵢ)", "Error (%)"]
         )
+        self._tree_actual = self.tree_nw
 
     def ejecutar_newton(self):
         funcion_str = self.entrada_funcion_nw.get().strip()
@@ -976,6 +1149,7 @@ class AplicacionPrincipal(ctk.CTk):
             x0  = float(self.entrada_x0_nw.get())
             tol = float(self.entrada_tol_nw.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_x0_nw, self.entrada_tol_nw)
             self._mostrar_error(self.tree_nw, "Ingresa números válidos en los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_nw):
@@ -992,7 +1166,7 @@ class AplicacionPrincipal(ctk.CTk):
             resultado["error"]
             )
             return
-    
+
         filas = []
         for f in resultado["tabla_iteraciones"]:
             err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
@@ -1041,16 +1215,20 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 4, 0)
         self.entrada_tol_sec = self._entry(4, 1, "Ej: 0.5")
 
+        self._entradas_actuales = [self.entrada_funcion_sec, self.entrada_x0_sec,
+                                   self.entrada_x1_sec, self.entrada_tol_sec]
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_secante, row=5)
+        self._boton_limpiar(row=5)
 
         self.tabs_sec = self._crear_tabs(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
         tab_tabla = self.tabs_sec.tab("📊  Tabla de Iteraciones")
         self.tree_sec = self._crear_treeview(
             tab_tabla,
             ["Iter", "xᵢ₋₁", "xᵢ", "f(xᵢ)", "Error (%)"]
         )
+        self._tree_actual = self.tree_sec
 
     def ejecutar_secante(self):
         funcion_str = self.entrada_funcion_sec.get().strip()
@@ -1059,13 +1237,14 @@ class AplicacionPrincipal(ctk.CTk):
             x1  = float(self.entrada_x1_sec.get())
             tol = float(self.entrada_tol_sec.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_x0_sec, self.entrada_x1_sec, self.entrada_tol_sec)
             self._mostrar_error(self.tree_sec, "Ingresa números válidos en los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_sec):
             return
         if not self._validar_numeros(self.tree_sec, x0=x0, x1=x1):
             return
-        
+
         metodo    = MetodoSecante()
         resultado = self._calcular_seguro(metodo.calcular, funcion_str, x0, x1, tol)
 
@@ -1075,7 +1254,7 @@ class AplicacionPrincipal(ctk.CTk):
             resultado["error"]
             )
             return
-    
+
         filas = []
         for f in resultado["tabla_iteraciones"]:
             xi_ant = f"{f['xi_anterior']:.6f}" if f['xi_anterior'] is not None else "N/A"
@@ -1120,16 +1299,19 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 3, 2)
         self.entrada_tol_pf = self._entry(3, 3, "Ej: 0.5")
 
+        self._entradas_actuales = [self.entrada_funcion_pf, self.entrada_x0_pf, self.entrada_tol_pf]
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_punto_fijo, row=4)
+        self._boton_limpiar(row=4)
 
         self.tabs_pf = self._crear_tabs(row=5)
-        self.frame_principal.grid_rowconfigure(5, weight=1)
+        self._set_tab_row(5)
 
         tab_tabla = self.tabs_pf.tab("📊  Tabla de Iteraciones")
         self.tree_pf = self._crear_treeview(
             tab_tabla,
             ["Iter", "xᵢ", "g(xᵢ)", "|g'(xᵢ)|", "Error (%)"]
         )
+        self._tree_actual = self.tree_pf
 
     def ejecutar_punto_fijo(self):
         g_str = self.entrada_funcion_pf.get().strip()
@@ -1137,13 +1319,14 @@ class AplicacionPrincipal(ctk.CTk):
             x0  = float(self.entrada_x0_pf.get())
             tol = float(self.entrada_tol_pf.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_x0_pf, self.entrada_tol_pf)
             self._mostrar_error(self.tree_pf, "Ingresa números válidos en los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_pf):
             return
         if not self._validar_numeros(self.tree_pf, x0=x0):
             return
-    
+
         metodo    = MetodoPuntoFijo()
         resultado = self._calcular_seguro(metodo.calcular, g_str, x0, tol)
 
@@ -1209,18 +1392,25 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 4, 2)
         self.entrada_tol_mul = self._entry(4, 3, "Ej: 0.01")
 
+        self._entradas_actuales = [
+            self.entrada_funcion_mul, self.entrada_x0_mul,
+            self.entrada_x1_mul, self.entrada_x2_mul, self.entrada_tol_mul
+        ]
+
         # Botón
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_muller, row=5)
+        self._boton_limpiar(row=5)
 
         # Tabs y Tabla
         self.tabs_mul = self._crear_tabs(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
         tab_tabla = self.tabs_mul.tab("📊  Tabla de Iteraciones")
         self.tree_mul = self._crear_treeview(
             tab_tabla,
             ["Iter", "x₀", "x₁", "x₂", "x₃ (Nueva Raíz)", "Error (%)"]
         )
+        self._tree_actual = self.tree_mul
 
     def ejecutar_muller(self):
         funcion_str = self.entrada_funcion_mul.get().strip()
@@ -1230,6 +1420,8 @@ class AplicacionPrincipal(ctk.CTk):
             x2  = float(self.entrada_x2_mul.get())
             tol = float(self.entrada_tol_mul.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_x0_mul, self.entrada_x1_mul,
+                                             self.entrada_x2_mul, self.entrada_tol_mul)
             self._mostrar_error(self.tree_mul, "Ingresa números válidos en todos los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_mul):
@@ -1258,7 +1450,7 @@ class AplicacionPrincipal(ctk.CTk):
         # Banner de Resultados
         tab_tabla = self.tabs_mul.tab("📊  Tabla de Iteraciones")
         self._limpiar_banners(tab_tabla)
-        
+
         # Extraemos la parte real para que no choque con el float que espera _panel_resultado
         raiz_aprox = resultado["raiz_aproximada"]
         raiz_float = raiz_aprox.real if isinstance(raiz_aprox, complex) else float(raiz_aprox)
@@ -1273,6 +1465,7 @@ class AplicacionPrincipal(ctk.CTk):
             tipo_metodo="abierto",
             metodo_nombre="Método de Müller"
         )
+
     # ══════════════════════════════════════════
     #  ─────────── MÉTODO BAIRSTOW ────────────
     # ══════════════════════════════════════════
@@ -1297,18 +1490,25 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 4, 0)
         self.entrada_tol_bai = self._entry(4, 1, "Ej: 0.01")
 
+        self._entradas_actuales = [
+            self.entrada_funcion_bai, self.entrada_r0_bai,
+            self.entrada_s0_bai, self.entrada_tol_bai
+        ]
+
         # Botón
         self._boton_calcular("⚙️  Calcular Raíces", self.ejecutar_bairstow, row=5)
+        self._boton_limpiar(row=5)
 
         # Tabs y Tabla
         self.tabs_bai = self._crear_tabs(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
         tab_tabla = self.tabs_bai.tab("📊  Tabla de Iteraciones")
         self.tree_bai = self._crear_treeview(
             tab_tabla,
             ["Iter", "r", "s", "Δr", "Δs", "Error Máx (%)"]
         )
+        self._tree_actual = self.tree_bai
 
     def ejecutar_bairstow(self):
         funcion_str = self.entrada_funcion_bai.get().strip()
@@ -1317,6 +1517,7 @@ class AplicacionPrincipal(ctk.CTk):
             s0  = float(self.entrada_s0_bai.get())
             tol = float(self.entrada_tol_bai.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_r0_bai, self.entrada_s0_bai, self.entrada_tol_bai)
             self._mostrar_error(self.tree_bai, "Ingresa números válidos en todos los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_bai):
@@ -1346,7 +1547,7 @@ class AplicacionPrincipal(ctk.CTk):
         # Banner de Resultados
         tab_tabla = self.tabs_bai.tab("📊  Tabla de Iteraciones")
         self._limpiar_banners(tab_tabla)
-        
+
         # Como Bairstow encuentra dos raíces simultáneamente, creamos un texto para mostrarlas
         r1 = resultado["raiz1"]
         r2 = resultado["raiz2"]
@@ -1356,14 +1557,15 @@ class AplicacionPrincipal(ctk.CTk):
 
         # Para el gráfico, tomamos la parte real de la primera raíz como guía visual
         raiz_grafico = r1.real if isinstance(r1, complex) else r1
-        
+
         self.dibujar_grafico(
             funcion_str, raiz_grafico - 2, raiz_grafico + 2,
             raiz_grafico,
             self.tabs_bai.tab("📈  Gráfica"),
             tipo_metodo="abierto",
             metodo_nombre="Método de Bairstow"
-        )    
+        )
+
     # ══════════════════════════════════════════
     #  ─────────── HORNER-NEWTON ──────────────
     # ══════════════════════════════════════════
@@ -1384,18 +1586,22 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Tolerancia (%):", 3, 2)
         self.entrada_tol_hn = self._entry(3, 3, "Ej: 0.01")
 
+        self._entradas_actuales = [self.entrada_funcion_hn, self.entrada_x0_hn, self.entrada_tol_hn]
+
         # Botón
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_horner, row=4)
+        self._boton_limpiar(row=4)
 
         # Tabs y Tabla
         self.tabs_hn = self._crear_tabs(row=5)
-        self.frame_principal.grid_rowconfigure(5, weight=1)
+        self._set_tab_row(5)
 
         tab_tabla = self.tabs_hn.tab("📊  Tabla de Iteraciones")
         self.tree_hn = self._crear_treeview(
             tab_tabla,
             ["Iter", "xᵢ", "P(xᵢ) [bₙ]", "P'(xᵢ) [cₙ₋₁]", "Error (%)"]
         )
+        self._tree_actual = self.tree_hn
 
     def ejecutar_horner(self):
         funcion_str = self.entrada_funcion_hn.get().strip()
@@ -1403,6 +1609,7 @@ class AplicacionPrincipal(ctk.CTk):
             x0  = float(self.entrada_x0_hn.get())
             tol = float(self.entrada_tol_hn.get())
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_x0_hn, self.entrada_tol_hn)
             self._mostrar_error(self.tree_hn, "Ingresa números válidos en todos los campos.")
             return
         if not self._validar_tolerancia(tol, self.tree_hn):
@@ -1423,8 +1630,8 @@ class AplicacionPrincipal(ctk.CTk):
             err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
             filas.append([
                 f["Iteración"],
-                f"{f['xi']:.6f}", 
-                f"{f['P(xi) [bn]']:.6f}", 
+                f"{f['xi']:.6f}",
+                f"{f['P(xi) [bn]']:.6f}",
                 f"{f['P\'(xi) [cn-1]']:.6f}",
                 err_str,
             ])
@@ -1509,8 +1716,10 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Vector b:", 3, 2)
         self.txt_lu_b = self._textbox(3, 3, "8\n-11\n-3", width=160, height=92)
         self._boton_calcular("Calcular LU", self.ejecutar_lu, row=4)
+        self._boton_limpiar(row=4)
+        self._entradas_actuales = [self.txt_lu_a, self.txt_lu_b]
         self.tabs_lu = self._crear_tabs_resultado(row=5)
-        self.frame_principal.grid_rowconfigure(5, weight=1)
+        self._set_tab_row(5)
 
     def ejecutar_lu(self):
         resultado = MetodoLU().calcular(self.txt_lu_a.get("1.0", "end"), self.txt_lu_b.get("1.0", "end"))
@@ -1535,8 +1744,10 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Vector b:", 3, 2)
         self.txt_gj_b = self._textbox(3, 3, "8\n-11\n-3", width=160, height=92)
         self._boton_calcular("Calcular Gauss-Jordan", self.ejecutar_gauss_jordan, row=4)
+        self._boton_limpiar(row=4)
+        self._entradas_actuales = [self.txt_gj_a, self.txt_gj_b]
         self.tabs_gj = self._crear_tabs_resultado(row=5)
-        self.frame_principal.grid_rowconfigure(5, weight=1)
+        self._set_tab_row(5)
 
     def ejecutar_gauss_jordan(self):
         resultado = MetodoGaussJordan().calcular(self.txt_gj_a.get("1.0", "end"), self.txt_gj_b.get("1.0", "end"))
@@ -1563,14 +1774,18 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Iter:", 5, 2)
         self.entrada_jac_iter = self._entry(5, 3, "100", width=80)
         self._boton_calcular("Calcular Jacobi", self.ejecutar_jacobi, row=6)
+        self._boton_limpiar(row=6)
+        self._entradas_actuales = [self.txt_jac_a, self.txt_jac_b, self.txt_jac_x0,
+                                   self.entrada_jac_tol, self.entrada_jac_iter]
         self.tabs_jac = self._crear_tabs_resultado(row=7)
-        self.frame_principal.grid_rowconfigure(7, weight=1)
+        self._set_tab_row(7)
 
     def ejecutar_jacobi(self):
         try:
             tol = float(self.entrada_jac_tol.get())
             max_iter = int(float(self.entrada_jac_iter.get()))
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_jac_tol, self.entrada_jac_iter)
             self._mostrar_error_label(self.tabs_jac.tab("📋  Resultado"), "La tolerancia e iteraciones deben ser numéricas.")
             return
         resultado = MetodoJacobi().calcular(
@@ -1599,8 +1814,10 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Vector b:", 3, 2)
         self.txt_rouche_b = self._textbox(3, 3, "6\n12\n1", width=160, height=92)
         self._boton_calcular("Analizar sistema", self.ejecutar_rouche, row=4)
+        self._boton_limpiar(row=4)
+        self._entradas_actuales = [self.txt_rouche_a, self.txt_rouche_b]
         self.tabs_rouche = self._crear_tabs_resultado(row=5)
-        self.frame_principal.grid_rowconfigure(5, weight=1)
+        self._set_tab_row(5)
 
     def ejecutar_rouche(self):
         resultado = MetodoRoucheFrobenius().calcular(self.txt_rouche_a.get("1.0", "end"), self.txt_rouche_b.get("1.0", "end"))
@@ -1622,8 +1839,10 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Puntos x,y:", 3, 0)
         self.txt_reg_puntos = self._textbox(3, 1, "0 1\n1 2.2\n2 5.1\n3 10.2\n4 17.1", height=120, colspan=2)
         self._boton_calcular("Calcular regresión", self.ejecutar_regresion_cuadratica, row=4)
+        self._boton_limpiar(row=4)
+        self._entradas_actuales = [self.txt_reg_puntos]
         self.tabs_reg = self._crear_tabs_resultado(row=5)
-        self.frame_principal.grid_rowconfigure(5, weight=1)
+        self._set_tab_row(5)
 
     def ejecutar_regresion_cuadratica(self):
         resultado = MetodoRegresionCuadratica().calcular(self.txt_reg_puntos.get("1.0", "end"))
@@ -1643,8 +1862,10 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Grado:", 3, 2)
         self.entrada_mc_grado = self._entry(3, 3, "2", width=80)
         self._boton_calcular("Ajustar curva", self.ejecutar_minimos_cuadrados, row=5)
+        self._boton_limpiar(row=5)
+        self._entradas_actuales = [self.txt_mc_puntos, self.entrada_mc_grado]
         self.tabs_mc = self._crear_tabs_resultado(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
     def ejecutar_minimos_cuadrados(self):
         resultado = MetodoMinimosCuadrados().calcular(self.txt_mc_puntos.get("1.0", "end"), self.entrada_mc_grado.get())
@@ -1664,8 +1885,10 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Evaluar x:", 3, 2)
         self.entrada_dd_eval = self._entry(3, 3, "3", width=80)
         self._boton_calcular("Interpolar", self.ejecutar_diferencias_divididas, row=5)
+        self._boton_limpiar(row=5)
+        self._entradas_actuales = [self.txt_dd_puntos, self.entrada_dd_eval]
         self.tabs_dd = self._crear_tabs_resultado(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
     def ejecutar_diferencias_divididas(self):
         resultado = MetodoNewtonDiferenciasDivididas().calcular(
@@ -1691,8 +1914,10 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Evaluar x:", 3, 2)
         self.entrada_int_eval = self._entry(3, 3, "3", width=80)
         self._boton_calcular("Interpolar", self.ejecutar_interpolacion, row=5)
+        self._boton_limpiar(row=5)
+        self._entradas_actuales = [self.txt_int_puntos, self.entrada_int_eval]
         self.tabs_int = self._crear_tabs_resultado(row=6)
-        self.frame_principal.grid_rowconfigure(6, weight=1)
+        self._set_tab_row(6)
 
     def ejecutar_interpolacion(self):
         resultado = MetodoInterpolacionLagrange().calcular(
@@ -1721,14 +1946,20 @@ class AplicacionPrincipal(ctk.CTk):
         self._label("Iter:", 5, 2)
         self.entrada_senl_iter = self._entry(5, 3, "50", width=80)
         self._boton_calcular("Calcular Newton SENL", self.ejecutar_newton_senl, row=6)
+        self._boton_limpiar(row=6)
+        self._entradas_actuales = [
+            self.txt_senl_ecs, self.entrada_senl_vars,
+            self.txt_senl_x0, self.entrada_senl_tol, self.entrada_senl_iter
+        ]
         self.tabs_senl = self._crear_tabs_resultado(row=7)
-        self.frame_principal.grid_rowconfigure(7, weight=1)
+        self._set_tab_row(7)
 
     def ejecutar_newton_senl(self):
         try:
             tol = float(self.entrada_senl_tol.get())
             max_iter = int(float(self.entrada_senl_iter.get()))
         except ValueError:
+            self._detectar_entries_invalidas(self.entrada_senl_tol, self.entrada_senl_iter)
             self._mostrar_error_label(self.tabs_senl.tab("📋  Resultado"), "La tolerancia e iteraciones deben ser numéricas.")
             return
         resultado = MetodoNewtonSENL().calcular(
