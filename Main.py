@@ -7,6 +7,7 @@ Lógica matemática separada en módulos externos (biseccion.py, etc.)
 # ═══════════════════════════════════════════════
 #  IMPORTACIONES
 # ═══════════════════════════════════════════════
+from metodos_avanzados import _format_number
 import math
 import tkinter as tk
 from tkinter import ttk
@@ -36,6 +37,8 @@ from metodos_avanzados import (
     MetodoNewtonSENL,
     MetodoRegresionCuadratica,
     MetodoRoucheFrobenius,
+    MetodoGaussSeidel,
+    MetodoTrazadoresCubicos,
 )
 
 # Sistema de temas
@@ -1664,12 +1667,14 @@ class AplicacionPrincipal(ctk.CTk):
             ("Factorización LU", self.mostrar_lu),
             ("Gauss-Jordan", self.mostrar_gauss_jordan),
             ("Jacobi", self.mostrar_jacobi),
+            ("Gauss-Seidel", self.mostrar_gauss_seidel),
             ("Rouché-Frobenius", self.mostrar_rouche),
             ("Regresión cuadrática", self.mostrar_regresion_cuadratica),
             ("Mínimos cuadrados", self.mostrar_minimos_cuadrados),
             ("Newton dif. divididas", self.mostrar_diferencias_divididas),
             ("Interpolación", self.mostrar_interpolacion),
             ("Newton SENL", self.mostrar_newton_senl),
+            ("Trazadores Cúbicos", self.mostrar_trazadores),
         ]
 
         cont = ctk.CTkFrame(self.frame_principal, fg_color="transparent")
@@ -1805,6 +1810,95 @@ class AplicacionPrincipal(ctk.CTk):
         detalle = resumen + "\n\nIteraciones:\n"
         detalle += "\n".join("  " + " | ".join(map(str, fila)) for fila in resultado["iteraciones"])
         self._mostrar_resultado_avanzado(self.tabs_jac, resumen, detalle)
+
+    def mostrar_gauss_seidel(self):
+        self._abrir_metodo_avanzado("Método de Gauss-Seidel", "⚡")
+        self._vista_activa = self.mostrar_gauss_seidel
+        self._label("Matriz A:", 3, 0)
+        self.txt_gs_a = self._textbox(3, 1, "10 -1 2\n-1 11 -1\n2 -1 10", height=92)
+        self._label("Vector b:", 3, 2)
+        self.txt_gs_b = self._textbox(3, 3, "6\n25\n-11", width=160, height=92)
+        self._label("x0:", 4, 0)
+        self.txt_gs_x0 = self._textbox(4, 1, "0 0 0", height=42)
+        self._label("Tol / Iter:", 4, 2)
+        self.entrada_gs_tol = self._entry(4, 3, "0.01", width=80)
+        self._label("Iter:", 5, 2)
+        self.entrada_gs_iter = self._entry(5, 3, "100", width=80)
+        self._boton_calcular("Calcular Gauss-Seidel", self.ejecutar_gauss_seidel, row=6)
+        self.tabs_gs = self._crear_tabs_resultado(row=7)
+        self.frame_principal.grid_rowconfigure(7, weight=1)
+
+    def ejecutar_gauss_seidel(self):
+        try:
+            tol = float(self.entrada_gs_tol.get())
+            max_iter = int(float(self.entrada_gs_iter.get()))
+            if tol <= 0 or max_iter <= 0:
+                 self._mostrar_error_label(self.tabs_gs.tab("📋  Resultado"), "La tolerancia y las iteraciones deben ser números positivos mayores a 0.")
+                 return
+        except ValueError:
+            self._mostrar_error_label(self.tabs_gs.tab("📋  Resultado"), "Asegúrate de no dejar campos vacíos y usar números válidos.")
+            return
+            
+        resultado = MetodoGaussSeidel().calcular(
+            self.txt_gs_a.get("1.0", "end"),
+            self.txt_gs_b.get("1.0", "end"),
+            self.txt_gs_x0.get("1.0", "end"),
+            tol,
+            max_iter,
+        )
+        
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_gs.tab("📋  Resultado"), resultado["error"])
+            return
+            
+        resumen = ""
+        if resultado["advertencia"]:
+            resumen += "⚠️ " + resultado["advertencia"] + "\n\n"
+        resumen += "Solución:\nx = [" + ", ".join(resultado["solucion"]) + "]"
+        
+        detalle = resumen + "\n\nTabla de Iteraciones:\n"
+        detalle += "\n".join("  " + " | ".join(map(str, fila)) for fila in resultado["iteraciones"])
+        self._mostrar_resultado_avanzado(self.tabs_gs, resumen, detalle)
+    
+    def mostrar_trazadores(self):
+        self._abrir_metodo_avanzado("Trazadores Cúbicos (Splines)", "🎢")
+        self._vista_activa = self.mostrar_trazadores
+        
+        self._label("Puntos x,y:", 3, 0)
+        self.txt_traz_puntos = self._textbox(3, 1, "1 2\n2 3\n3 5\n4 7", height=120, colspan=2)
+        
+        self._label("Evaluar x:", 3, 2)
+        self.entrada_traz_eval = self._entry(3, 3, "2.5", width=80)
+        
+        self._boton_calcular("Calcular Splines", self.ejecutar_trazadores, row=5)
+        
+        self.tabs_traz = self._crear_tabs_resultado(row=6)
+        self.frame_principal.grid_rowconfigure(6, weight=1)
+
+    def ejecutar_trazadores(self):
+        resultado = MetodoTrazadoresCubicos().calcular(
+            self.txt_traz_puntos.get("1.0", "end"),
+            self.entrada_traz_eval.get()
+        )
+        
+        if "error" in resultado:
+            self._mostrar_error_label(self.tabs_traz.tab("📋  Resultado"), resultado["error"])
+            return
+            
+        resumen = "Polinomios generados por cada intervalo:\n\n"
+        for eq in resultado["ecuaciones"]:
+            resumen += f"[{eq['intervalo']}]  =>  S(x) = {eq['polinomio']}\n"
+            
+        if resultado["valor"] is not None:
+            resumen += f"\n🎯 Valor interpolado en x={resultado['evaluado_en']}  es:  {resultado['valor']}"
+            
+        detalle = resumen + "\n\n" + "—" * 40 + "\nCoeficientes internos de cada tramo (a, b, c, d):\n"
+        for eq in resultado["ecuaciones"]:
+            a, b = _format_number(eq['a']), _format_number(eq['b'])
+            c, d = _format_number(eq['c']), _format_number(eq['d'])
+            detalle += f"Tramo [{eq['intervalo']}]:\n  a={a}, b={b}, c={c}, d={d}\n\n"
+            
+        self._mostrar_resultado_avanzado(self.tabs_traz, resumen, detalle)
 
     def mostrar_rouche(self):
         self._abrir_metodo_avanzado("Teorema Rouché-Frobenius", "🧠")

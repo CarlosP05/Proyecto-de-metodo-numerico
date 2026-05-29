@@ -431,3 +431,156 @@ class MetodoNewtonSENL:
             return {"error": "La matriz Jacobiana es singular. Cambia los valores iniciales."}
         except Exception as e:
             return {"error": f"Error en Newton para SENL: {e}"}
+class MetodoGaussSeidel:
+    def calcular(self, matriz_str, vector_str, x0_str, tolerancia, max_iter=100):
+        try:
+            # 1. Parseo seguro de entradas
+            a = parse_matrix(matriz_str)
+            b = parse_vector(vector_str)
+            x = parse_vector(x0_str)
+            
+            # 2. Validaciones matemáticas críticas
+            if a.shape[0] != a.shape[1]:
+                return {"error": "Gauss-Seidel requiere una matriz cuadrada."}
+            if b.size != a.shape[0] or x.size != a.shape[0]:
+                return {"error": "b y x0 deben tener la misma dimension que A (el mismo número de elementos)."}
+            
+            # Protección contra división por cero
+            if np.any(np.abs(np.diag(a)) < 1e-12):
+                return {"error": "Gauss-Seidel no puede usar una diagonal con ceros. Reordena las filas de tus ecuaciones."}
+                
+            tolerancia = parse_positive_tolerance(tolerancia)
+            max_iter = parse_positive_int(max_iter, "El maximo de iteraciones")
+
+            n = a.shape[0]
+            iteraciones = []
+            advertencia = ""
+            
+            # Advertencia de convergencia (Matriz Diagonalmente Dominante)
+            diag_abs = np.abs(np.diag(a))
+            row_sums = np.sum(np.abs(a), axis=1) - diag_abs
+            if not np.all(diag_abs > row_sums):
+                advertencia = "La matriz no es diagonalmente dominante; el método de Gauss-Seidel podría divergir."
+
+            x_ant = x.copy()
+            
+            # 3. Bucle Iterativo de Gauss-Seidel
+            for i in range(1, max_iter + 1):
+                x_new = x_ant.copy()
+                
+                for j in range(n):
+                    # Aquí está la magia: usa x_new (lo recién calculado) y x_ant (lo viejo restante)
+                    sum1 = np.dot(a[j, :j], x_new[:j])
+                    sum2 = np.dot(a[j, j+1:], x_ant[j+1:])
+                    x_new[j] = (b[j] - sum1 - sum2) / a[j, j]
+                    
+                # 4. Cálculo de Error Relativo Porcentual
+                denom = np.maximum(np.abs(x_new), 1e-12) # Evitar división por cero
+                error = float(np.max(np.abs((x_new - x_ant) / denom)) * 100)
+                
+                iteraciones.append([i, *[_format_number(v) for v in x_new], _format_number(error)])
+                
+                if error <= tolerancia:
+                    return {
+                        "exito": True,
+                        "advertencia": advertencia,
+                        "solucion": [_format_number(v) for v in x_new],
+                        "iteraciones": iteraciones,
+                    }
+                x_ant = x_new.copy()
+
+            return {"error": f"Gauss-Seidel no converge en {max_iter} iteraciones. {advertencia}".strip()}
+            
+        except Exception as e:
+            return {"error": f"Error inesperado en Gauss-Seidel: {e}"}
+
+class MetodoTrazadoresCubicos:
+    def calcular(self, puntos_str, evaluar_en=None):
+        try:
+            points = parse_points(puntos_str)
+            
+            # Validación Ninja 1: Mínimo de puntos
+            if len(points) < 3:
+                return {"error": "Los trazadores cúbicos requieren al menos 3 puntos para generar curvas suaves."}
+                
+            # Validación Ninja 2: Ordenar los puntos por el eje X automáticamente
+            # (Por si el usuario los ingresa en desorden)
+            points = sorted(points, key=lambda p: p[0])
+            
+            xs = np.array([p[0] for p in points], dtype=float)
+            ys = np.array([p[1] for p in points], dtype=float)
+            n = len(points) - 1
+            
+            # Diferencias entre puntos (h)
+            h = np.diff(xs)
+            
+            # Construcción del sistema tridiagonal (Vector alpha)
+            alpha = np.zeros(n)
+            for i in range(1, n):
+                alpha[i] = (3.0 / h[i]) * (ys[i+1] - ys[i]) - (3.0 / h[i-1]) * (ys[i] - ys[i-1])
+                
+            # Resolución del sistema tridiagonal para encontrar los coeficientes "c"
+            l = np.ones(n + 1)
+            mu = np.zeros(n + 1)
+            z = np.zeros(n + 1)
+            
+            for i in range(1, n):
+                l[i] = 2.0 * (xs[i+1] - xs[i-1]) - h[i-1] * mu[i-1]
+                mu[i] = h[i] / l[i]
+                z[i] = (alpha[i] - h[i-1] * z[i-1]) / l[i]
+                
+            l[n] = 1.0
+            z[n] = 0.0
+            c = np.zeros(n + 1)
+            b = np.zeros(n)
+            d = np.zeros(n)
+            
+            # Sustitución hacia atrás para encontrar "b" y "d"
+            for j in range(n - 1, -1, -1):
+                c[j] = z[j] - mu[j] * c[j+1]
+                b[j] = (ys[j+1] - ys[j]) / h[j] - h[j] * (c[j+1] + 2.0 * c[j]) / 3.0
+                d[j] = (c[j+1] - c[j]) / (3.0 * h[j])
+                
+            a = ys[:-1]
+            
+            # Generar los polinomios de forma visual
+            ecuaciones = []
+            x_sym = sp.Symbol('x')
+            for j in range(n):
+                # Fórmula matemática del trazador: S(x) = a + b(x-xi) + c(x-xi)^2 + d(x-xi)^3
+                term_x = x_sym - xs[j]
+                poly = a[j] + b[j]*term_x + c[j]*(term_x**2) + d[j]*(term_x**3)
+                poly_expand = sp.expand(poly) # Sympy hace el álgebra para simplificarlo
+                rango = f"{_format_number(xs[j])} <= x <= {_format_number(xs[j+1])}"
+                
+                ecuaciones.append({
+                    "intervalo": rango,
+                    "polinomio": str(poly_expand),
+                    "a": a[j], "b": b[j], "c": c[j], "d": d[j]
+                })
+                
+            # Evaluación de un punto específico
+            valor = None
+            xv = parse_optional_finite(evaluar_en, "El punto a evaluar")
+            if xv is not None:
+                # Validación Ninja 3: Prohibir extrapolar fuera del rango
+                if xv < xs[0] or xv > xs[-1]:
+                    return {"error": f"El valor a evaluar (x={xv}) está fuera del rango de los datos ingresados [{xs[0]}, {xs[-1]}]."}
+                
+                # Buscar en qué intervalo cae la 'x' pedida
+                for j in range(n):
+                    if xs[j] <= xv <= xs[j+1]:
+                        term_x = xv - xs[j]
+                        v = a[j] + b[j]*term_x + c[j]*(term_x**2) + d[j]*(term_x**3)
+                        valor = _format_number(v)
+                        break
+                        
+            return {
+                "exito": True,
+                "ecuaciones": ecuaciones,
+                "valor": valor,
+                "evaluado_en": _format_number(xv) if xv is not None else None
+            }
+            
+        except Exception as e:
+            return {"error": f"Error inesperado en trazadores cúbicos: {e}"}
