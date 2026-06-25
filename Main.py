@@ -187,7 +187,7 @@ class AplicacionPrincipal(ctk.CTk):
             text_color=self._t("text_primary")
         ).pack(anchor="w")
         ctk.CTkLabel(
-            titulo_col, text="Raíces de ecuaciones",
+            titulo_col, text="Análisis Numérico",
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=self._t("text_secondary")
         ).pack(anchor="w")
@@ -195,52 +195,52 @@ class AplicacionPrincipal(ctk.CTk):
         # Separador
         self._sep(self.sidebar, row=1)
 
-        # ── Sección Métodos Cerrados
-        self._seccion_label(self.sidebar, "MÉTODOS CERRADOS", row=2)
+        # ── BLOQUE 1: Raíces de Ecuaciones No Lineales
+        self._seccion_label(self.sidebar, "1. RAÍCES DE ECUACIONES", row=2)
 
         self.btn_biseccion = self._nav_button(
             self.sidebar, "  📐  Bisección", self.mostrar_biseccion, row=3,
-            tooltip="Divide el intervalo [a,b] a la mitad iterativamente"
+            tooltip="Método Cerrado: Divide el intervalo [a,b] a la mitad"
         )
         self.btn_regla_falsa = self._nav_button(
             self.sidebar, "  📏  Regla Falsa", self.mostrar_regla_falsa, row=4,
-            tooltip="Interpolación lineal entre a y b para estimar la raíz"
+            tooltip="Método Cerrado: Interpolación lineal en el intervalo"
         )
-
-        # ── Sección Métodos Abiertos
-        self._seccion_label(self.sidebar, "MÉTODOS ABIERTOS", row=5)
-
         self.btn_newton = self._nav_button(
-            self.sidebar, "  ⚡  Newton-Raphson", self.mostrar_newton, row=6,
-            tooltip="Usa la derivada f'(x) para converger rápidamente"
+            self.sidebar, "  ⚡  Newton-Raphson", self.mostrar_newton, row=5,
+            tooltip="Método Abierto: Usa la derivada f'(x) para converger rápido"
         )
         self.btn_secante = self._nav_button(
-            self.sidebar, "  📈  Secante", self.mostrar_secante, row=7,
-            tooltip="Aproxima la derivada usando dos puntos iniciales"
+            self.sidebar, "  📈  Secante", self.mostrar_secante, row=6,
+            tooltip="Método Abierto: Aproxima la derivada usando dos puntos"
         )
         self.btn_punto_fijo = self._nav_button(
-            self.sidebar, "  🔄  Punto Fijo", self.mostrar_punto_fijo, row=8,
-            tooltip="Itera x = g(x) hasta que converge al punto fijo"
+            self.sidebar, "  🔄  Punto Fijo", self.mostrar_punto_fijo, row=7,
+            tooltip="Método Abierto: Itera x = g(x) hasta la convergencia"
         )
 
-        # ── NUEVA SECCIÓN: Raíces de Polinomios ──
-        self._seccion_label(self.sidebar, "RAÍCES DE POLINOMIOS", row=9)
+        # ── BLOQUE 2: Raíces de Polinomios
+        self._seccion_label(self.sidebar, "2. RAÍCES DE POLINOMIOS", row=8)
 
         self.btn_muller = self._nav_button(
-            self.sidebar, "  🧮  Müller", self.mostrar_muller, row=10,
-            tooltip="Usa parábola para encontrar raíces complejas"
+            self.sidebar, "  🧮  Müller", self.mostrar_muller, row=9,
+            tooltip="Usa una parábola para aproximar raíces reales y complejas"
         )
         self.btn_bairstow = self._nav_button(
-            self.sidebar, "  ✂️  Bairstow", self.mostrar_bairstow, row=11,
-            tooltip="Extrae factores cuadráticos (raíces complejas)"
+            self.sidebar, "  ✂️  Bairstow", self.mostrar_bairstow, row=10,
+            tooltip="Algoritmo iterativo para extraer factores cuadráticos"
         )
         self.btn_horner = self._nav_button(
-            self.sidebar, "  📝  Horner-Newton", self.mostrar_horner, row=12,
-            tooltip="Evaluación eficiente con el esquema de Horner"
+            self.sidebar, "  📝  Horner-Newton", self.mostrar_horner, row=11,
+            tooltip="Evaluación eficiente de polinomios y sus derivadas"
         )
+
+        # ── BLOQUES RESTANTES Y AVANZADOS (Clasificación General)
+        self._seccion_label(self.sidebar, "OTROS BLOQUES TEMÁTICOS", row=12)
+        
         self.btn_avanzados = self._nav_button(
-            self.sidebar, "  🧩  Métodos avanzados", self.mostrar_avanzados, row=13,
-            tooltip="Álgebra lineal, interpolación, regresión y sistemas no lineales"
+            self.sidebar, "  🧩  Módulos del Programa", self.mostrar_avanzados, row=13,
+            tooltip="Sistemas lineales/no lineales, Ajuste de curvas, Integración y EDOs"
         )
 
         # Separador inferior
@@ -258,7 +258,7 @@ class AplicacionPrincipal(ctk.CTk):
 
         self.btn_tema = ctk.CTkButton(
             tema_frame,
-            text="🌙  Oscuro",
+            text="🌙  Oscuro" if self._modo_oscuro else "☀️  Claro",
             width=90,
             height=28,
             font=ctk.CTkFont(family="Segoe UI", size=11),
@@ -852,10 +852,9 @@ class AplicacionPrincipal(ctk.CTk):
             toolbar_frame = tk.Frame(frame_destino, bg=bg, height=32)
             toolbar_frame.pack(fill="x", padx=4, pady=(0, 4))
             toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
-            toolbar.config(background=bg)
             for child in toolbar.winfo_children():
                 try:
-                    child.config(background=bg)
+                    child["background"] = bg
                 except Exception:
                     pass
             toolbar.update()
@@ -1661,39 +1660,82 @@ class AplicacionPrincipal(ctk.CTk):
         self._vista_activa = self.mostrar_avanzados
         self.limpiar_frame_principal()
         self._set_btn_activo(self.btn_avanzados)
-        self._titulo("Métodos avanzados", "🧩")
+        self._titulo("Módulos Avanzados y Complementarios", "🧩")
 
-        metodos = [
+        # Habilitar el comportamiento elástico del frame principal para acomodar las secciones
+        self.frame_principal.grid_rowconfigure(2, weight=1)
+        self.frame_principal.grid_columnconfigure((0, 1), weight=1)
+
+        # Crear un contenedor con scroll interno por si la ventana es pequeña
+        scroll_container = ctk.CTkScrollableFrame(
+            self.frame_principal, 
+            fg_color="transparent",
+            label_text=""
+        )
+        scroll_container.grid(row=2, column=0, columnspan=4, padx=20, pady=(0, 20), sticky="nsew")
+        scroll_container.grid_columnconfigure((0, 1), weight=1)
+
+        # 📊 CATEGORÍA: SISTEMAS DE ECUACIONES LINEALES
+        frame_sel = ctk.CTkFrame(scroll_container, fg_color=self._t("bg_card2"), corner_radius=12, border_width=1, border_color=self._t("border"))
+        frame_sel.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        
+        ctk.CTkLabel(frame_sel, text="Sistemas de Ecuaciones Lineales", font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color=self._t("accent")).pack(anchor="w", padx=16, pady=(12, 6))
+        
+        metodos_sel = [
             ("Factorización LU", self.mostrar_lu),
             ("Gauss-Jordan", self.mostrar_gauss_jordan),
-            ("Jacobi", self.mostrar_jacobi),
-            ("Gauss-Seidel", self.mostrar_gauss_seidel),
-            ("Rouché-Frobenius", self.mostrar_rouche),
-            ("Regresión cuadrática", self.mostrar_regresion_cuadratica),
-            ("Mínimos cuadrados", self.mostrar_minimos_cuadrados),
-            ("Newton dif. divididas", self.mostrar_diferencias_divididas),
-            ("Interpolación", self.mostrar_interpolacion),
-            ("Newton SENL", self.mostrar_newton_senl),
-            ("Trazadores Cúbicos", self.mostrar_trazadores),
+            ("Teorema Rouché-Frobenius", self.mostrar_rouche),
+            ("Método de Jacobi", self.mostrar_jacobi),
+            ("Método Gauss-Seidel", self.mostrar_gauss_seidel),
         ]
+        for texto, comando in metodos_sel:
+            ctk.CTkButton(frame_sel, text=texto, command=comando, font=ctk.CTkFont(family="Segoe UI", size=12), fg_color=self._t("bg_card"), hover_color=self._t("accent_hover"), text_color=self._t("text_primary"), height=32, corner_radius=6).pack(fill="x", padx=16, pady=4)
 
-        cont = ctk.CTkFrame(self.frame_principal, fg_color="transparent")
-        cont.grid(row=2, column=0, columnspan=4, padx=24, pady=18, sticky="nsew")
-        for i, (texto, comando) in enumerate(metodos):
-            btn = ctk.CTkButton(
-                cont,
-                text=texto,
-                command=comando,
-                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-                fg_color=self._t("bg_card2"),
-                hover_color=self._t("accent_hover"),
-                text_color=self._t("text_primary"),
-                height=52,
-                corner_radius=8,
-            )
-            btn.grid(row=i // 3, column=i % 3, padx=8, pady=8, sticky="ew")
-        for col in range(3):
-            cont.grid_columnconfigure(col, weight=1)
+        # 🧬 CATEGORÍA: SISTEMAS DE ECUACIONES NO LINEALES
+        frame_senl = ctk.CTkFrame(scroll_container, fg_color=self._t("bg_card2"), corner_radius=12, border_width=1, border_color=self._t("border"))
+        frame_senl.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+        
+        ctk.CTkLabel(frame_senl, text="Sistemas de Ecuaciones No Lineales", font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color=self._t("accent")).pack(anchor="w", padx=16, pady=(12, 6))
+        
+        metodos_senl = [
+            ("Newton-Raphson para SENL", self.mostrar_newton_senl),
+        ]
+        for texto, comando in metodos_senl:
+            ctk.CTkButton(frame_senl, text=texto, command=comando, font=ctk.CTkFont(family="Segoe UI", size=12), fg_color=self._t("bg_card"), hover_color=self._t("accent_hover"), text_color=self._t("text_primary"), height=32, corner_radius=6).pack(fill="x", padx=16, pady=4)
+
+        # 📉 CATEGORÍA: AJUSTE DE CURVAS (INTERPOLACIÓN Y REGRESIÓN)
+        frame_ajuste = ctk.CTkFrame(scroll_container, fg_color=self._t("bg_card2"), corner_radius=12, border_width=1, border_color=self._t("border"))
+        frame_ajuste.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        
+        ctk.CTkLabel(frame_ajuste, text="Ajuste de Curvas e Interpolación", font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color=self._t("accent")).pack(anchor="w", padx=16, pady=(12, 6))
+        
+        metodos_ajuste = [
+            ("Interpolación de Lagrange", self.mostrar_interpolacion),
+            ("Newton por Dif. Divididas", self.mostrar_diferencias_divididas),
+            ("Trazadores Cúbicos (Splines)", self.mostrar_trazadores),
+            ("Regresión Cuadrática", self.mostrar_regresion_cuadratica),
+            ("Mínimos Cuadrados General", self.mostrar_minimos_cuadrados),
+        ]
+        for texto, comando in metodos_ajuste:
+            ctk.CTkButton(frame_ajuste, text=texto, command=comando, font=ctk.CTkFont(family="Segoe UI", size=12), fg_color=self._t("bg_card"), hover_color=self._t("accent_hover"), text_color=self._t("text_primary"), height=32, corner_radius=6).pack(fill="x", padx=16, pady=4)
+
+        # ⏳ CATEGORÍA: MÓDULOS PENDIENTES (COMPLEMENTARIOS)
+        frame_pendientes = ctk.CTkFrame(scroll_container, fg_color=self._t("bg_card2"), corner_radius=12, border_width=1, border_color=self._t("border"))
+        frame_pendientes.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
+        
+        ctk.CTkLabel(frame_pendientes, text="Próximas Implementaciones", font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color=self._t("text_secondary")).pack(anchor="w", padx=16, pady=(12, 6))
+        
+        # Lista informativa de métodos faltantes en modo desactivado (Visualización de Plan de Trabajo)
+        pendientes = [
+            "Aproximaciones y Errores (Taylor)",
+            "Integración: Regla del Trapecio",
+            "Integración: Algoritmo de Romberg",
+            "EDO: Métodos de Euler y Heun",
+            "EDO: Runge-Kutta de 4to Orden (RK4)"
+        ]
+        for texto in pendientes:
+            btn_p = ctk.CTkButton(frame_pendientes, text=f"🔒 {texto}", font=ctk.CTkFont(family="Segoe UI", size=12, slant="italic"), fg_color="transparent", text_color=self._t("text_secondary"), height=30, state="disabled")
+            btn_p.pack(fill="x", padx=16, pady=2)
 
     def _abrir_metodo_avanzado(self, titulo, icono):
         self._vista_activa = lambda: self._abrir_metodo_avanzado(titulo, icono)
