@@ -144,6 +144,8 @@ class MetodoLU:
 
 
 class MetodoGaussJordan:
+    MAX_PASOS = 14  # Límite de pasos a registrar (evita listas enormes)
+
     def calcular(self, matriz_str, vector_str):
         try:
             a = parse_matrix(matriz_str)
@@ -154,16 +156,46 @@ class MetodoGaussJordan:
             rows, cols = aug.shape
             pivot_row = 0
             pivots = []
+            pasos = []  # Lista de {'operacion': str, 'matriz': list}
 
             for col in range(cols - 1):
                 pivot = pivot_row + np.argmax(np.abs(aug[pivot_row:, col]))
                 if abs(aug[pivot, col]) < 1e-12:
                     continue
-                aug[[pivot_row, pivot]] = aug[[pivot, pivot_row]]
-                aug[pivot_row] = aug[pivot_row] / aug[pivot_row, col]
+
+                # 1. Intercambio de filas
+                if pivot != pivot_row:
+                    aug[[pivot_row, pivot]] = aug[[pivot, pivot_row]]
+                    if len(pasos) < self.MAX_PASOS:
+                        pasos.append({
+                            'operacion': f'F{pivot_row+1} \u2194 F{pivot+1}  (intercambio de pivote)',
+                            'matriz': _as_rows(aug.copy()),
+                        })
+
+                # 2. Normalización del pivote
+                divisor = aug[pivot_row, col]
+                aug[pivot_row] = aug[pivot_row] / divisor
+                if len(pasos) < self.MAX_PASOS:
+                    pasos.append({
+                        'operacion': f'F{pivot_row+1} \u2190 F{pivot_row+1} / ({_format_number(divisor)})',
+                        'matriz': _as_rows(aug.copy()),
+                    })
+
+                # 3. Eliminación de todas las demás filas
                 for r in range(rows):
                     if r != pivot_row:
-                        aug[r] = aug[r] - aug[r, col] * aug[pivot_row]
+                        factor = aug[r, col]
+                        aug[r] = aug[r] - factor * aug[pivot_row]
+                        if abs(factor) > 1e-12 and len(pasos) < self.MAX_PASOS:
+                            sign = '-' if factor >= 0 else '+'
+                            pasos.append({
+                                'operacion': (
+                                    f'F{r+1} \u2190 F{r+1} '
+                                    f'{sign} ({_format_number(abs(factor))})\u00b7F{pivot_row+1}'
+                                ),
+                                'matriz': _as_rows(aug.copy()),
+                            })
+
                 pivots.append(col)
                 pivot_row += 1
                 if pivot_row == rows:
@@ -187,6 +219,7 @@ class MetodoGaussJordan:
                 "tipo": tipo,
                 "rref": _as_rows(aug),
                 "solucion": solucion,
+                "pasos": pasos,
             }
         except Exception as e:
             return {"error": f"Error en Gauss-Jordan: {e}"}
@@ -276,10 +309,15 @@ class MetodoRegresionCuadratica:
             r2 = 1.0 if ss_tot == 0 else 1 - ss_res / ss_tot
             filas = [[_format_number(x), _format_number(y), _format_number(yh), _format_number(y - yh)]
                      for x, y, yh in zip(xs, ys, pred)]
+            # LaTeX del polinomio para el renderer gráfico
+            x_sym = sp.Symbol('x')
+            poly_sym = coefs[0]*x_sym**2 + coefs[1]*x_sym + coefs[2]
+            latex_ec = sp.latex(sp.nsimplify(poly_sym, rational=False, tolerance=1e-8))
             return {
                 "exito": True,
                 "coeficientes": [_format_number(v) for v in coefs],
                 "ecuacion": f"y = ({_format_number(coefs[0])})x**2 + ({_format_number(coefs[1])})x + ({_format_number(coefs[2])})",
+                "latex_ecuacion": latex_ec,
                 "r2": _format_number(r2),
                 "tabla": filas,
             }
@@ -314,10 +352,15 @@ class MetodoMinimosCuadrados:
                     terms.append(f"({_format_number(coef)})x**{power}")
             filas = [[_format_number(x), _format_number(y), _format_number(yh), _format_number(y - yh)]
                      for x, y, yh in zip(xs, ys, pred)]
+            # LaTeX del polinomio para el renderer gráfico
+            x_sym = sp.Symbol('x')
+            poly_sym = sum(c * x_sym**(grado - i) for i, c in enumerate(coefs))
+            latex_ec = sp.latex(sp.nsimplify(poly_sym, rational=False, tolerance=1e-8))
             return {
                 "exito": True,
                 "coeficientes": [_format_number(v) for v in coefs],
                 "ecuacion": "y = " + " + ".join(terms),
+                "latex_ecuacion": latex_ec,
                 "r2": _format_number(r2),
                 "tabla": filas,
             }
@@ -354,7 +397,9 @@ class MetodoNewtonDiferenciasDivididas:
                 "exito": True,
                 "coeficientes": [_format_number(v) for v in coefs],
                 "polinomio": str(poly),
+                "latex_poly": sp.latex(poly),
                 "valor": valor,
+                "eval_x": _format_number(xv) if xv is not None else None,
                 "tabla": [[_format_number(v) if v is not None else "" for v in row] for row in tabla],
             }
         except Exception as e:
@@ -378,7 +423,13 @@ class MetodoInterpolacionLagrange:
             xv = parse_optional_finite(evaluar_en, "El punto a evaluar")
             if xv is not None:
                 valor = _format_number(poly.subs(x, xv))
-            return {"exito": True, "polinomio": str(poly), "valor": valor}
+            return {
+                "exito": True,
+                "polinomio": str(poly),
+                "latex_poly": sp.latex(poly),
+                "valor": valor,
+                "eval_x": _format_number(xv) if xv is not None else None,
+            }
         except Exception as e:
             return {"error": f"Error en interpolacion: {e}"}
 
@@ -556,6 +607,7 @@ class MetodoTrazadoresCubicos:
                 ecuaciones.append({
                     "intervalo": rango,
                     "polinomio": str(poly_expand),
+                    "latex_poly": sp.latex(poly_expand),
                     "a": a[j], "b": b[j], "c": c[j], "d": d[j]
                 })
                 

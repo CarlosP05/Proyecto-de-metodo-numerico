@@ -8,6 +8,7 @@ Lógica matemática separada en módulos externos (biseccion.py, etc.)
 #  IMPORTACIONES
 # ═══════════════════════════════════════════════
 from metodos_avanzados import _format_number
+from equation_renderer import mostrar_resultado_enriquecido, mostrar_resultado_enriquecido_raices
 import math
 import tkinter as tk
 from tkinter import ttk
@@ -640,6 +641,44 @@ class AplicacionPrincipal(ctk.CTk):
         tabs.add("📈  Gráfica")
         return tabs
 
+    def _crear_tabs_raices(self, row: int):
+        """Crea las pestañas 'Resultado', 'Detalle' y 'Gráfica' para métodos de raíces."""
+        if self._modo_oscuro:
+            tabs = ctk.CTkTabview(
+                self.frame_principal,
+                fg_color="#1e1e1e",
+                segmented_button_fg_color="#181818",
+                segmented_button_selected_color=self._t("accent"),
+                segmented_button_selected_hover_color=self._t("accent_hover"),
+                segmented_button_unselected_color="#181818",
+                segmented_button_unselected_hover_color="#252525",
+                text_color="#f0f0f0",
+                text_color_disabled="#555555",
+                corner_radius=10,
+            )
+        else:
+            tabs = ctk.CTkTabview(
+                self.frame_principal,
+                fg_color="#f3f4f6",
+                segmented_button_fg_color="#e5e7eb",
+                segmented_button_selected_color=self._t("accent"),
+                segmented_button_selected_hover_color=self._t("accent_hover"),
+                segmented_button_unselected_color="#e5e7eb",
+                segmented_button_unselected_hover_color="#d1d5db",
+                text_color="#111827",
+                text_color_disabled="#9ca3af",
+                corner_radius=10,
+            )
+        tabs.grid(row=row, column=0, columnspan=4, padx=16, pady=(0, 16), sticky="nsew")
+        tabs.add("📋  Resultado")
+        tabs.add("📊  Detalle")
+        tabs.add("📈  Gráfica")
+        self._mostrar_texto_resultado(
+            tabs.tab("📊  Detalle"),
+            "Aquí aparecerá el detalle del cálculo cuando presiones el botón calcular."
+        )
+        return tabs
+
     def _crear_tabs_resultado(self, row: int):
         tabs = ctk.CTkTabview(
             self.frame_principal,
@@ -969,16 +1008,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_limpiar(row=5)
 
         # Tabs
-        self.tabs_biseccion = self._crear_tabs(row=6)
+        self.tabs_biseccion = self._crear_tabs_raices(row=6)
         self._set_tab_row(6)
-
-        # Treeview en pestaña 1
-        tab_tabla = self.tabs_biseccion.tab("📊  Tabla de Iteraciones")
-        self.tree_biseccion = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "a", "b", "c (Punto Medio)", "f(c)", "Error (%)"]
-        )
-        self._tree_actual = self.tree_biseccion
+        self._tree_actual = None
 
     def ejecutar_biseccion(self):
         funcion_str = self.entrada_funcion.get().strip()
@@ -988,37 +1020,23 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_tol.get())
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_a, self.entrada_b, self.entrada_tol)
-            self._mostrar_error(self.tree_biseccion, "Ingresa números válidos en los campos.")
+            self._mostrar_error(self.tabs_biseccion.tab("📋  Resultado"), "Ingresa números válidos en los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_biseccion):
+        if not self._validar_tolerancia(tol, self.tabs_biseccion.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_biseccion, a=a, b=b):
+        if not self._validar_numeros(self.tabs_biseccion.tab("📋  Resultado"), a=a, b=b):
             return
 
         metodo   = MetodoBiseccion()
         resultado = self._calcular_seguro(metodo.calcular, funcion_str, a, b, tol)
 
         if "error" in resultado:
-            self._mostrar_error_label(self.tabs_biseccion.tab("📊  Tabla de Iteraciones"),
+            self._mostrar_error_label(self.tabs_biseccion.tab("📋  Resultado"),
                                       resultado["error"])
             return
 
-        # Llenar tabla
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
-            filas.append([
-                f["Iteración"],
-                f"{f['a']:.6f}", f"{f['b']:.6f}",
-                f"{f['c']:.6f}", f"{f['f(c)']:.6f}", err_str,
-            ])
-        self._llenar_treeview(self.tree_biseccion, filas)
-
-        # Banner resultado
-        tab_tabla = self.tabs_biseccion.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-        self._panel_resultado(tab_tabla, resultado["raiz_aproximada"],
-                              resultado["total_iteraciones"])
+        resultado['funcion_str'] = funcion_str
+        mostrar_resultado_enriquecido_raices(self.tabs_biseccion, 'biseccion', resultado, self._modo_oscuro)
 
         # Gráfica
         self.dibujar_grafico(
@@ -1055,15 +1073,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_regla_falsa, row=5)
         self._boton_limpiar(row=5)
 
-        self.tabs_rf = self._crear_tabs(row=6)
+        self.tabs_rf = self._crear_tabs_raices(row=6)
         self._set_tab_row(6)
-
-        tab_tabla = self.tabs_rf.tab("📊  Tabla de Iteraciones")
-        self.tree_rf = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "a", "b", "c (R. Falsa)", "f(c)", "Error (%)"]
-        )
-        self._tree_actual = self.tree_rf
+        self._tree_actual = None
 
     def ejecutar_regla_falsa(self):
         funcion_str = self.entrada_funcion_rf.get().strip()
@@ -1073,11 +1085,11 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_tol_rf.get())
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_a_rf, self.entrada_b_rf, self.entrada_tol_rf)
-            self._mostrar_error(self.tree_rf, "Ingresa números válidos en los campos.")
+            self._mostrar_error(self.tabs_rf.tab("📋  Resultado"), "Ingresa números válidos en los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_rf):
+        if not self._validar_tolerancia(tol, self.tabs_rf.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_rf, a=a, b=b):
+        if not self._validar_numeros(self.tabs_rf.tab("📋  Resultado"), a=a, b=b):
             return
 
         metodo    = MetodoReglaFalsa()
@@ -1085,25 +1097,13 @@ class AplicacionPrincipal(ctk.CTk):
 
         if "error" in resultado:
             self._mostrar_error_label(
-                self.tabs_rf.tab("📊  Tabla de Iteraciones"),
+                self.tabs_rf.tab("📋  Resultado"),
                 resultado["error"]
             )
             return
 
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
-            filas.append([
-                f["Iteración"],
-                f"{f['a']:.6f}", f"{f['b']:.6f}",
-                f"{f['c']:.6f}", f"{f['f(c)']:.6f}", err_str,
-            ])
-        self._llenar_treeview(self.tree_rf, filas)
-
-        tab_tabla = self.tabs_rf.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-        self._panel_resultado(tab_tabla, resultado["raiz_aproximada"],
-                                    resultado["total_iteraciones"])
+        resultado['funcion_str'] = funcion_str
+        mostrar_resultado_enriquecido_raices(self.tabs_rf, 'regla_falsa', resultado, self._modo_oscuro)
 
         self.dibujar_grafico(
             funcion_str, a, b,
@@ -1135,15 +1135,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_newton, row=4)
         self._boton_limpiar(row=4)
 
-        self.tabs_nw = self._crear_tabs(row=5)
+        self.tabs_nw = self._crear_tabs_raices(row=5)
         self._set_tab_row(5)
-
-        tab_tabla = self.tabs_nw.tab("📊  Tabla de Iteraciones")
-        self.tree_nw = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "xᵢ", "f(xᵢ)", "f'(xᵢ)", "Error (%)"]
-        )
-        self._tree_actual = self.tree_nw
+        self._tree_actual = None
 
     def ejecutar_newton(self):
         funcion_str = self.entrada_funcion_nw.get().strip()
@@ -1152,11 +1146,11 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_tol_nw.get())
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_x0_nw, self.entrada_tol_nw)
-            self._mostrar_error(self.tree_nw, "Ingresa números válidos en los campos.")
+            self._mostrar_error(self.tabs_nw.tab("📋  Resultado"), "Ingresa números válidos en los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_nw):
+        if not self._validar_tolerancia(tol, self.tabs_nw.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_nw, x0=x0):
+        if not self._validar_numeros(self.tabs_nw.tab("📋  Resultado"), x0=x0):
             return
 
         metodo    = MetodoNewton()
@@ -1164,29 +1158,13 @@ class AplicacionPrincipal(ctk.CTk):
 
         if "error" in resultado:
             self._mostrar_error_label(
-            self.tabs_nw.tab("📊  Tabla de Iteraciones"),
-            resultado["error"]
+                self.tabs_nw.tab("📋  Resultado"),
+                resultado["error"]
             )
             return
 
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
-            key_dfxi = "f'(xi)"
-            dfxi_val = f"{f[key_dfxi]:.6f}"
-            filas.append([
-                f["Iteración"],
-                f"{f['xi']:.6f}",
-                f"{f['f(xi)']:.6f}",
-                dfxi_val,
-                err_str,
-            ])
-        self._llenar_treeview(self.tree_nw, filas)
-
-        tab_tabla = self.tabs_nw.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-        self._panel_resultado(tab_tabla, resultado["raiz_aproximada"],
-                              resultado["total_iteraciones"])
+        resultado['funcion_str'] = funcion_str
+        mostrar_resultado_enriquecido_raices(self.tabs_nw, 'newton', resultado, self._modo_oscuro)
 
         self.dibujar_grafico(
             funcion_str, x0, x0,
@@ -1222,15 +1200,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_secante, row=5)
         self._boton_limpiar(row=5)
 
-        self.tabs_sec = self._crear_tabs(row=6)
+        self.tabs_sec = self._crear_tabs_raices(row=6)
         self._set_tab_row(6)
-
-        tab_tabla = self.tabs_sec.tab("📊  Tabla de Iteraciones")
-        self.tree_sec = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "xᵢ₋₁", "xᵢ", "f(xᵢ)", "Error (%)"]
-        )
-        self._tree_actual = self.tree_sec
+        self._tree_actual = None
 
     def ejecutar_secante(self):
         funcion_str = self.entrada_funcion_sec.get().strip()
@@ -1240,11 +1212,11 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_tol_sec.get())
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_x0_sec, self.entrada_x1_sec, self.entrada_tol_sec)
-            self._mostrar_error(self.tree_sec, "Ingresa números válidos en los campos.")
+            self._mostrar_error(self.tabs_sec.tab("📋  Resultado"), "Ingresa números válidos en los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_sec):
+        if not self._validar_tolerancia(tol, self.tabs_sec.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_sec, x0=x0, x1=x1):
+        if not self._validar_numeros(self.tabs_sec.tab("📋  Resultado"), x0=x0, x1=x1):
             return
 
         metodo    = MetodoSecante()
@@ -1252,28 +1224,13 @@ class AplicacionPrincipal(ctk.CTk):
 
         if "error" in resultado:
             self._mostrar_error_label(
-            self.tabs_sec.tab("📊  Tabla de Iteraciones"),
-            resultado["error"]
+                self.tabs_sec.tab("📋  Resultado"),
+                resultado["error"]
             )
             return
 
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            xi_ant = f"{f['xi_anterior']:.6f}" if f['xi_anterior'] is not None else "N/A"
-            err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
-            filas.append([
-                f["Iteración"],
-                xi_ant,
-                f"{f['xi']:.6f}",
-                f"{f['f(xi)']:.6f}",
-                err_str,
-            ])
-        self._llenar_treeview(self.tree_sec, filas)
-
-        tab_tabla = self.tabs_sec.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-        self._panel_resultado(tab_tabla, resultado["raiz_aproximada"],
-                              resultado["total_iteraciones"])
+        resultado['funcion_str'] = funcion_str
+        mostrar_resultado_enriquecido_raices(self.tabs_sec, 'secante', resultado, self._modo_oscuro)
 
         self.dibujar_grafico(
             funcion_str, x0, x1,
@@ -1305,15 +1262,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_calcular("⚙️  Calcular Raíz", self.ejecutar_punto_fijo, row=4)
         self._boton_limpiar(row=4)
 
-        self.tabs_pf = self._crear_tabs(row=5)
+        self.tabs_pf = self._crear_tabs_raices(row=5)
         self._set_tab_row(5)
-
-        tab_tabla = self.tabs_pf.tab("📊  Tabla de Iteraciones")
-        self.tree_pf = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "xᵢ", "g(xᵢ)", "|g'(xᵢ)|", "Error (%)"]
-        )
-        self._tree_actual = self.tree_pf
+        self._tree_actual = None
 
     def ejecutar_punto_fijo(self):
         g_str = self.entrada_funcion_pf.get().strip()
@@ -1322,11 +1273,11 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_tol_pf.get())
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_x0_pf, self.entrada_tol_pf)
-            self._mostrar_error(self.tree_pf, "Ingresa números válidos en los campos.")
+            self._mostrar_error(self.tabs_pf.tab("📋  Resultado"), "Ingresa números válidos en los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_pf):
+        if not self._validar_tolerancia(tol, self.tabs_pf.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_pf, x0=x0):
+        if not self._validar_numeros(self.tabs_pf.tab("📋  Resultado"), x0=x0):
             return
 
         metodo    = MetodoPuntoFijo()
@@ -1334,29 +1285,13 @@ class AplicacionPrincipal(ctk.CTk):
 
         if "error" in resultado:
             self._mostrar_error_label(
-            self.tabs_pf.tab("📊  Tabla de Iteraciones"),
-            resultado["error"]
+                self.tabs_pf.tab("📋  Resultado"),
+                resultado["error"]
             )
             return
 
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
-            key_dg = "|g'(xi)|"
-            dg_val = f"{f[key_dg]:.6f}"
-            filas.append([
-                f["Iteración"],
-                f"{f['xi']:.6f}",
-                f"{f['g(xi)']:.6f}",
-                dg_val,
-                err_str,
-            ])
-        self._llenar_treeview(self.tree_pf, filas)
-
-        tab_tabla = self.tabs_pf.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-        self._panel_resultado(tab_tabla, resultado["raiz_aproximada"],
-                              resultado["total_iteraciones"])
+        resultado['funcion_str'] = g_str
+        mostrar_resultado_enriquecido_raices(self.tabs_pf, 'punto_fijo', resultado, self._modo_oscuro)
 
         funcion_grafica = f"({g_str}) - x"
         self.dibujar_grafico(
@@ -1404,15 +1339,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_limpiar(row=5)
 
         # Tabs y Tabla
-        self.tabs_mul = self._crear_tabs(row=6)
+        self.tabs_mul = self._crear_tabs_raices(row=6)
         self._set_tab_row(6)
-
-        tab_tabla = self.tabs_mul.tab("📊  Tabla de Iteraciones")
-        self.tree_mul = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "x₀", "x₁", "x₂", "x₃ (Nueva Raíz)", "Error (%)"]
-        )
-        self._tree_actual = self.tree_mul
+        self._tree_actual = None
 
     def ejecutar_muller(self):
         funcion_str = self.entrada_funcion_mul.get().strip()
@@ -1424,40 +1353,26 @@ class AplicacionPrincipal(ctk.CTk):
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_x0_mul, self.entrada_x1_mul,
                                              self.entrada_x2_mul, self.entrada_tol_mul)
-            self._mostrar_error(self.tree_mul, "Ingresa números válidos en todos los campos.")
+            self._mostrar_error(self.tabs_mul.tab("📋  Resultado"), "Ingresa números válidos en todos los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_mul):
+        if not self._validar_tolerancia(tol, self.tabs_mul.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_mul, x0=x0, x1=x1, x2=x2):
+        if not self._validar_numeros(self.tabs_mul.tab("📋  Resultado"), x0=x0, x1=x1, x2=x2):
             return
 
         metodo    = MetodoMuller()
         resultado = self._calcular_seguro(metodo.calcular, funcion_str, x0, x1, x2, tol)
 
         if "error" in resultado:
-            self._mostrar_error_label(self.tabs_mul.tab("📊  Tabla de Iteraciones"), resultado["error"])
+            self._mostrar_error_label(self.tabs_mul.tab("📋  Resultado"), resultado["error"])
             return
 
-        # Llenar el Treeview
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
-            filas.append([
-                f["Iteración"],
-                f["x0"], f["x1"], f["x2"], f["x3"],
-                err_str,
-            ])
-        self._llenar_treeview(self.tree_mul, filas)
+        resultado['funcion_str'] = funcion_str
+        mostrar_resultado_enriquecido_raices(self.tabs_mul, 'muller', resultado, self._modo_oscuro)
 
-        # Banner de Resultados
-        tab_tabla = self.tabs_mul.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-
-        # Extraemos la parte real para que no choque con el float que espera _panel_resultado
+        # Extraemos la parte real para que no choque con el float que espera dibujar_grafico
         raiz_aprox = resultado["raiz_aproximada"]
         raiz_float = raiz_aprox.real if isinstance(raiz_aprox, complex) else float(raiz_aprox)
-
-        self._panel_resultado(tab_tabla, raiz_float, resultado["total_iteraciones"])
 
         # Dibujar Gráfica
         self.dibujar_grafico(
@@ -1502,15 +1417,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_limpiar(row=5)
 
         # Tabs y Tabla
-        self.tabs_bai = self._crear_tabs(row=6)
+        self.tabs_bai = self._crear_tabs_raices(row=6)
         self._set_tab_row(6)
-
-        tab_tabla = self.tabs_bai.tab("📊  Tabla de Iteraciones")
-        self.tree_bai = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "r", "s", "Δr", "Δs", "Error Máx (%)"]
-        )
-        self._tree_actual = self.tree_bai
+        self._tree_actual = None
 
     def ejecutar_bairstow(self):
         funcion_str = self.entrada_funcion_bai.get().strip()
@@ -1520,43 +1429,24 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_tol_bai.get())
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_r0_bai, self.entrada_s0_bai, self.entrada_tol_bai)
-            self._mostrar_error(self.tree_bai, "Ingresa números válidos en todos los campos.")
+            self._mostrar_error(self.tabs_bai.tab("📋  Resultado"), "Ingresa números válidos en todos los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_bai):
+        if not self._validar_tolerancia(tol, self.tabs_bai.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_bai, r0=r0, s0=s0):
+        if not self._validar_numeros(self.tabs_bai.tab("📋  Resultado"), r0=r0, s0=s0):
             return
 
         metodo    = MetodoBairstow()
         resultado = self._calcular_seguro(metodo.calcular, funcion_str, r0, s0, tol)
 
         if "error" in resultado:
-            self._mostrar_error_label(self.tabs_bai.tab("📊  Tabla de Iteraciones"), resultado["error"])
+            self._mostrar_error_label(self.tabs_bai.tab("📋  Resultado"), resultado["error"])
             return
 
-        # Llenar el Treeview
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            err_str = f"{f['Error Máx (%)']:.6f}" if f['Error Máx (%)'] is not None else "N/A"
-            filas.append([
-                f["Iteración"],
-                f"{f['r']:.6f}", f"{f['s']:.6f}",
-                f"{f['Δr']:.6f}", f"{f['Δs']:.6f}",
-                err_str,
-            ])
-        self._llenar_treeview(self.tree_bai, filas)
+        resultado['funcion_str'] = funcion_str
+        mostrar_resultado_enriquecido_raices(self.tabs_bai, 'bairstow', resultado, self._modo_oscuro)
 
-        # Banner de Resultados
-        tab_tabla = self.tabs_bai.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-
-        # Como Bairstow encuentra dos raíces simultáneamente, creamos un texto para mostrarlas
         r1 = resultado["raiz1"]
-        r2 = resultado["raiz2"]
-        texto_raiz = f"x₁= {r1}  |  x₂= {r2}"
-
-        self._panel_resultado(tab_tabla, texto_raiz, resultado["total_iteraciones"])
-
         # Para el gráfico, tomamos la parte real de la primera raíz como guía visual
         raiz_grafico = r1.real if isinstance(r1, complex) else r1
 
@@ -1595,15 +1485,9 @@ class AplicacionPrincipal(ctk.CTk):
         self._boton_limpiar(row=4)
 
         # Tabs y Tabla
-        self.tabs_hn = self._crear_tabs(row=5)
+        self.tabs_hn = self._crear_tabs_raices(row=5)
         self._set_tab_row(5)
-
-        tab_tabla = self.tabs_hn.tab("📊  Tabla de Iteraciones")
-        self.tree_hn = self._crear_treeview(
-            tab_tabla,
-            ["Iter", "xᵢ", "P(xᵢ) [bₙ]", "P'(xᵢ) [cₙ₋₁]", "Error (%)"]
-        )
-        self._tree_actual = self.tree_hn
+        self._tree_actual = None
 
     def ejecutar_horner(self):
         funcion_str = self.entrada_funcion_hn.get().strip()
@@ -1612,37 +1496,22 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_tol_hn.get())
         except ValueError:
             self._detectar_entries_invalidas(self.entrada_x0_hn, self.entrada_tol_hn)
-            self._mostrar_error(self.tree_hn, "Ingresa números válidos en todos los campos.")
+            self._mostrar_error(self.tabs_hn.tab("📋  Resultado"), "Ingresa números válidos en todos los campos.")
             return
-        if not self._validar_tolerancia(tol, self.tree_hn):
+        if not self._validar_tolerancia(tol, self.tabs_hn.tab("📋  Resultado")):
             return
-        if not self._validar_numeros(self.tree_hn, x0=x0):
+        if not self._validar_numeros(self.tabs_hn.tab("📋  Resultado"), x0=x0):
             return
 
         metodo = MetodoHornerNewton()
         resultado = self._calcular_seguro(metodo.calcular, funcion_str, x0, tol)
 
         if "error" in resultado:
-            self._mostrar_error_label(self.tabs_hn.tab("📊  Tabla de Iteraciones"), resultado["error"])
+            self._mostrar_error_label(self.tabs_hn.tab("📋  Resultado"), resultado["error"])
             return
 
-        # Llenar el Treeview
-        filas = []
-        for f in resultado["tabla_iteraciones"]:
-            err_str = f"{f['Error (%)']:.6f}" if f['Error (%)'] is not None else "N/A"
-            filas.append([
-                f["Iteración"],
-                f"{f['xi']:.6f}",
-                f"{f['P(xi) [bn]']:.6f}",
-                f"{f['P\'(xi) [cn-1]']:.6f}",
-                err_str,
-            ])
-        self._llenar_treeview(self.tree_hn, filas)
-
-        # Banner de Resultados
-        tab_tabla = self.tabs_hn.tab("📊  Tabla de Iteraciones")
-        self._limpiar_banners(tab_tabla)
-        self._panel_resultado(tab_tabla, resultado["raiz_aproximada"], resultado["total_iteraciones"])
+        resultado['funcion_str'] = funcion_str
+        mostrar_resultado_enriquecido_raices(self.tabs_hn, 'horner_newton', resultado, self._modo_oscuro)
 
         # Dibujar Gráfica
         self.dibujar_grafico(
@@ -1769,19 +1638,14 @@ class AplicacionPrincipal(ctk.CTk):
         self._set_tab_row(5)
 
     def ejecutar_lu(self):
-        resultado = MetodoLU().calcular(self.txt_lu_a.get("1.0", "end"), self.txt_lu_b.get("1.0", "end"))
+        resultado = MetodoLU().calcular(
+            self.txt_lu_a.get("1.0", "end"),
+            self.txt_lu_b.get("1.0", "end"),
+        )
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_lu.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = "x = [" + ", ".join(resultado["solucion"]) + "]"
-        detalle = "\n\n".join([
-            self._matriz_a_texto("P =", resultado["P"]),
-            self._matriz_a_texto("L =", resultado["L"]),
-            self._matriz_a_texto("U =", resultado["U"]),
-            "y = [" + ", ".join(resultado["y"]) + "]",
-            resumen,
-        ])
-        self._mostrar_resultado_avanzado(self.tabs_lu, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_lu, 'lu', resultado, self._modo_oscuro)
 
     def mostrar_gauss_jordan(self):
         self._abrir_metodo_avanzado("Método de Gauss-Jordan", "🧾")
@@ -1797,15 +1661,14 @@ class AplicacionPrincipal(ctk.CTk):
         self._set_tab_row(5)
 
     def ejecutar_gauss_jordan(self):
-        resultado = MetodoGaussJordan().calcular(self.txt_gj_a.get("1.0", "end"), self.txt_gj_b.get("1.0", "end"))
+        resultado = MetodoGaussJordan().calcular(
+            self.txt_gj_a.get("1.0", "end"),
+            self.txt_gj_b.get("1.0", "end"),
+        )
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_gj.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = resultado["tipo"]
-        if resultado["solucion"]:
-            resumen += "\n\nx = [" + ", ".join(resultado["solucion"]) + "]"
-        detalle = resumen + "\n\n" + self._matriz_a_texto("Matriz reducida =", resultado["rref"])
-        self._mostrar_resultado_avanzado(self.tabs_gj, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_gj, 'gauss_jordan', resultado, self._modo_oscuro)
 
     def mostrar_jacobi(self):
         self._abrir_metodo_avanzado("Método de Jacobi", "🔁")
@@ -1845,13 +1708,7 @@ class AplicacionPrincipal(ctk.CTk):
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_jac.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = ""
-        if resultado["advertencia"]:
-            resumen += resultado["advertencia"] + "\n\n"
-        resumen += "x = [" + ", ".join(resultado["solucion"]) + "]"
-        detalle = resumen + "\n\nIteraciones:\n"
-        detalle += "\n".join("  " + " | ".join(map(str, fila)) for fila in resultado["iteraciones"])
-        self._mostrar_resultado_avanzado(self.tabs_jac, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_jac, 'jacobi', resultado, self._modo_oscuro)
 
     def mostrar_gauss_seidel(self):
         self._abrir_metodo_avanzado("Método de Gauss-Seidel", "⚡")
@@ -1875,12 +1732,11 @@ class AplicacionPrincipal(ctk.CTk):
             tol = float(self.entrada_gs_tol.get())
             max_iter = int(float(self.entrada_gs_iter.get()))
             if tol <= 0 or max_iter <= 0:
-                 self._mostrar_error_label(self.tabs_gs.tab("📋  Resultado"), "La tolerancia y las iteraciones deben ser números positivos mayores a 0.")
-                 return
+                self._mostrar_error_label(self.tabs_gs.tab("📋  Resultado"), "La tolerancia y las iteraciones deben ser números positivos mayores a 0.")
+                return
         except ValueError:
             self._mostrar_error_label(self.tabs_gs.tab("📋  Resultado"), "Asegúrate de no dejar campos vacíos y usar números válidos.")
             return
-            
         resultado = MetodoGaussSeidel().calcular(
             self.txt_gs_a.get("1.0", "end"),
             self.txt_gs_b.get("1.0", "end"),
@@ -1888,19 +1744,10 @@ class AplicacionPrincipal(ctk.CTk):
             tol,
             max_iter,
         )
-        
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_gs.tab("📋  Resultado"), resultado["error"])
             return
-            
-        resumen = ""
-        if resultado["advertencia"]:
-            resumen += "⚠️ " + resultado["advertencia"] + "\n\n"
-        resumen += "Solución:\nx = [" + ", ".join(resultado["solucion"]) + "]"
-        
-        detalle = resumen + "\n\nTabla de Iteraciones:\n"
-        detalle += "\n".join("  " + " | ".join(map(str, fila)) for fila in resultado["iteraciones"])
-        self._mostrar_resultado_avanzado(self.tabs_gs, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_gs, 'gauss_seidel', resultado, self._modo_oscuro)
     
     def mostrar_trazadores(self):
         self._abrir_metodo_avanzado("Trazadores Cúbicos (Splines)", "🎢")
@@ -1920,27 +1767,12 @@ class AplicacionPrincipal(ctk.CTk):
     def ejecutar_trazadores(self):
         resultado = MetodoTrazadoresCubicos().calcular(
             self.txt_traz_puntos.get("1.0", "end"),
-            self.entrada_traz_eval.get()
+            self.entrada_traz_eval.get(),
         )
-        
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_traz.tab("📋  Resultado"), resultado["error"])
             return
-            
-        resumen = "Polinomios generados por cada intervalo:\n\n"
-        for eq in resultado["ecuaciones"]:
-            resumen += f"[{eq['intervalo']}]  =>  S(x) = {eq['polinomio']}\n"
-            
-        if resultado["valor"] is not None:
-            resumen += f"\n🎯 Valor interpolado en x={resultado['evaluado_en']}  es:  {resultado['valor']}"
-            
-        detalle = resumen + "\n\n" + "—" * 40 + "\nCoeficientes internos de cada tramo (a, b, c, d):\n"
-        for eq in resultado["ecuaciones"]:
-            a, b = _format_number(eq['a']), _format_number(eq['b'])
-            c, d = _format_number(eq['c']), _format_number(eq['d'])
-            detalle += f"Tramo [{eq['intervalo']}]:\n  a={a}, b={b}, c={c}, d={d}\n\n"
-            
-        self._mostrar_resultado_avanzado(self.tabs_traz, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_traz, 'trazadores', resultado, self._modo_oscuro)
 
     def mostrar_rouche(self):
         self._abrir_metodo_avanzado("Teorema Rouché-Frobenius", "🧠")
@@ -1956,18 +1788,14 @@ class AplicacionPrincipal(ctk.CTk):
         self._set_tab_row(5)
 
     def ejecutar_rouche(self):
-        resultado = MetodoRoucheFrobenius().calcular(self.txt_rouche_a.get("1.0", "end"), self.txt_rouche_b.get("1.0", "end"))
+        resultado = MetodoRoucheFrobenius().calcular(
+            self.txt_rouche_a.get("1.0", "end"),
+            self.txt_rouche_b.get("1.0", "end"),
+        )
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_rouche.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = resultado["conclusion"]
-        detalle = (
-            f"Rango(A) = {resultado['rango_a']}\n"
-            f"Rango(A|b) = {resultado['rango_aug']}\n"
-            f"Incógnitas = {resultado['incognitas']}\n\n"
-            f"{resumen}"
-        )
-        self._mostrar_resultado_avanzado(self.tabs_rouche, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_rouche, 'rouche', resultado, self._modo_oscuro)
 
     def mostrar_regresion_cuadratica(self):
         self._abrir_metodo_avanzado("Regresión cuadrática", "📈")
@@ -1985,10 +1813,7 @@ class AplicacionPrincipal(ctk.CTk):
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_reg.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = f"{resultado['ecuacion']}\nR^2 = {resultado['r2']}"
-        detalle = resumen + "\n\nx | y | y_estimado | residuo\n"
-        detalle += "\n".join(" | ".join(fila) for fila in resultado["tabla"])
-        self._mostrar_resultado_avanzado(self.tabs_reg, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_reg, 'regresion', resultado, self._modo_oscuro)
 
     def mostrar_minimos_cuadrados(self):
         self._abrir_metodo_avanzado("Mínimos cuadrados", "📉")
@@ -2004,14 +1829,14 @@ class AplicacionPrincipal(ctk.CTk):
         self._set_tab_row(6)
 
     def ejecutar_minimos_cuadrados(self):
-        resultado = MetodoMinimosCuadrados().calcular(self.txt_mc_puntos.get("1.0", "end"), self.entrada_mc_grado.get())
+        resultado = MetodoMinimosCuadrados().calcular(
+            self.txt_mc_puntos.get("1.0", "end"),
+            self.entrada_mc_grado.get(),
+        )
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_mc.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = f"{resultado['ecuacion']}\nR^2 = {resultado['r2']}"
-        detalle = resumen + "\n\nx | y | y_estimado | residuo\n"
-        detalle += "\n".join(" | ".join(fila) for fila in resultado["tabla"])
-        self._mostrar_resultado_avanzado(self.tabs_mc, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_mc, 'minimos_cuadrados', resultado, self._modo_oscuro)
 
     def mostrar_diferencias_divididas(self):
         self._abrir_metodo_avanzado("Newton por diferencias divididas", "🧮")
@@ -2034,13 +1859,9 @@ class AplicacionPrincipal(ctk.CTk):
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_dd.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = "Polinomio:\n" + resultado["polinomio"]
-        if resultado["valor"] is not None:
-            resumen += "\n\nValor evaluado = " + resultado["valor"]
-        detalle = resumen + "\n\nCoeficientes:\n[" + ", ".join(resultado["coeficientes"]) + "]"
-        detalle += "\n\nTabla de diferencias divididas:\n"
-        detalle += "\n".join(" | ".join(fila) for fila in resultado["tabla"])
-        self._mostrar_resultado_avanzado(self.tabs_dd, resumen, detalle)
+        mostrar_resultado_enriquecido(
+            self.tabs_dd, 'diferencias_divididas', resultado, self._modo_oscuro
+        )
 
     def mostrar_interpolacion(self):
         self._abrir_metodo_avanzado("Interpolación de funciones", "📌")
@@ -2063,10 +1884,9 @@ class AplicacionPrincipal(ctk.CTk):
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_int.tab("📋  Resultado"), resultado["error"])
             return
-        resumen = "Polinomio interpolante:\n" + resultado["polinomio"]
-        if resultado["valor"] is not None:
-            resumen += "\n\nValor evaluado = " + resultado["valor"]
-        self._mostrar_resultado_avanzado(self.tabs_int, resumen, resumen)
+        mostrar_resultado_enriquecido(
+            self.tabs_int, 'lagrange', resultado, self._modo_oscuro
+        )
 
     def mostrar_newton_senl(self):
         self._abrir_metodo_avanzado("Newton para SENL", "🧬")
@@ -2108,11 +1928,7 @@ class AplicacionPrincipal(ctk.CTk):
         if "error" in resultado:
             self._mostrar_error_label(self.tabs_senl.tab("📋  Resultado"), resultado["error"])
             return
-        pares = [f"{var} = {val}" for var, val in zip(resultado["variables"], resultado["solucion"])]
-        resumen = "Solución:\n" + "\n".join(pares)
-        detalle = resumen + "\n\nIteraciones:\n"
-        detalle += "\n".join("  " + " | ".join(map(str, fila)) for fila in resultado["iteraciones"])
-        self._mostrar_resultado_avanzado(self.tabs_senl, resumen, detalle)
+        mostrar_resultado_enriquecido(self.tabs_senl, 'newton_senl', resultado, self._modo_oscuro)
 
     # ──────────────────────────────────────────
     #  HELPERS DE ERROR
